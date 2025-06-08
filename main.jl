@@ -28,10 +28,8 @@ Base.iterate(iter::ImpulzusIterátor, state=0) =
 origin = Idoforras(SVector(0.0, 0.0, 0.0), 0.5, 0.0)  # például RV = 0.5
 imp_iter = ImpulzusIterátor(origin, 0.05, 100)  # dt, lépésszám
 
-# --- 3D megjelenítő függvény ---
+# --- 3D Megjelenítés Beállítása ---
 include("scene_setup.jl")
-
-# --- 3D megjelenítés ---
 fig, scene = setup_scene(; use_axis3 = true)  # Itt lehet váltani true/false között
 
 # Impulzushatárok
