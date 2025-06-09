@@ -15,13 +15,14 @@ struct ImpulzusIterátor
     n_max::Int
 end
 
+# Visszaállítjuk az eredeti iterátor logikát
 Base.iterate(iter::ImpulzusIterátor, state=0) =
     state > iter.n_max ? nothing : begin
         t = iter.dt * state
         shift = SVector(iter.forrás.RV * t, 0.0, 0.0)  # mozgás X irányban
         pozíció = iter.forrás.pozíció0 + shift
         sugár = iter.forrás.RV * (iter.n_max * iter.dt - t)
-        (Sphere(Point3f(pozíció...), sugár), state + 1)
+        ((pozíció, sugár), state + 1)  # Most (pozíció, sugár) párt adunk vissza
     end
 
 # --- Originális időforrás létrehozása ---
@@ -32,9 +33,17 @@ imp_iter = ImpulzusIterátor(origin, 0.05, 100)  # dt, lépésszám
 include("scene_setup.jl")
 fig, scene = setup_scene(; use_axis3 = true)  # Itt lehet váltani true/false között
 
-# Impulzushatárok
-for g in imp_iter
-    mesh!(scene, g, color = (RGBf(0.6, 1.0, 1.0), 0.05), transparency=true)  # türkiz (#99FFFF), 0.05 áttetszőség
+# Impulzushatárok - minden gömböt külön rajzolunk ki meshscatter!-rel
+for (pos, r) in imp_iter
+    meshscatter!(
+        scene,
+        [Point3f(pos...)],  # Egy elemű tömb
+        markersize = [Float32(r)],  # Egy elemű tömb
+        color = RGBf(0.6, 1.0, 1.0),
+        transparency = true,
+        alpha = 0.05,
+        shading = NoShading
+    )
 end
 
 # --- Vízvonal kirajzolása ---
