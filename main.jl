@@ -1,5 +1,6 @@
 using GLMakie
 using StaticArrays
+using GeometryBasics
 
 # --- Időforrás definíció ---
 struct Idoforras
@@ -15,45 +16,50 @@ struct ImpulzusIterátor
     n_max::Int
 end
 
-# Visszaállítjuk az eredeti iterátor logikát
+# Gömbfelület egyetlen hívással (GeometryBasics helper)
+function create_detailed_sphere(center::Point3f, radius::Float32, res::Int = 48)
+    sp     = Sphere(center, radius)               # beépített típus
+    verts  = GeometryBasics.coordinates(sp, res)  # res×res pont
+    idxs   = GeometryBasics.faces(sp, res)
+    return GeometryBasics.Mesh(verts, idxs)
+end
+
+# Iterátor logika
 Base.iterate(iter::ImpulzusIterátor, state=0) =
     state > iter.n_max ? nothing : begin
-        t = iter.dt * state
-        shift = SVector(iter.forrás.RV * t, 0.0, 0.0)  # mozgás X irányban
-        pozíció = iter.forrás.pozíció0 + shift
-        sugár = iter.forrás.RV * (iter.n_max * iter.dt - t)
-        ((pozíció, sugár), state + 1)  # Most (pozíció, sugár) párt adunk vissza
+        t        = iter.dt * state
+        shift    = SVector(iter.forrás.RV * t, 0.0, 0.0)   # mozgás X‑irányban
+        pozíció  = iter.forrás.pozíció0 + shift
+        sugár    = iter.forrás.RV * (iter.n_max * iter.dt - t)
+        ((pozíció, sugár), state + 1)
     end
 
-# --- Originális időforrás létrehozása ---
-origin = Idoforras(SVector(0.0, 0.0, 0.0), 0.5, 0.0)  # például RV = 0.5
-imp_iter = ImpulzusIterátor(origin, 0.05, 100)  # dt, lépésszám
+# --- Eredeti időforrás ---
+origin   = Idoforras(SVector(0.0, 0.0, 0.0), 0.5, 0.0)
+imp_iter = ImpulzusIterátor(origin, 0.05, 100)
 
-# --- 3D Megjelenítés Beállítása ---
+# --- Megjelenítés ---
 include("scene_setup.jl")
-fig, scene = setup_scene(; use_axis3 = true)  # Itt lehet váltani true/false között
+fig, scene = setup_scene(; use_axis3 = true)
 
-# Impulzushatárok - minden gömböt külön rajzolunk ki meshscatter!-rel
+
+# --- Gömbhéjak kirajzolása ---
 for (pos, r) in imp_iter
     meshscatter!(
         scene,
-        [Point3f(pos...)],  # Egy elemű tömb
-        markersize = [Float32(r)],  # Egy elemű tömb
-        color = RGBf(0.6, 1.0, 1.0),
+        [Point3f(pos...)],
+        marker      = create_detailed_sphere(Point3f(0, 0, 0), 1f0, 48),
+        markersize  = Float32(r),
+        color       = RGBf(0.6, 1.0, 1.0),
         transparency = true,
-        alpha = 0.05,
-        shading = NoShading
+        alpha        = 0.05,
+        shading      = NoShading,
     )
 end
 
-# --- Vízvonal kirajzolása ---
-dt = 0.05
-steps = 100
+# --- Vízvonal ---
+dt = 0.05; steps = 100
 pozíciók = [Point3f(origin.pozíció0[1] - origin.RV * dt * i, 0.0, 0.0) for i in 0:steps]
-lines!(scene, pozíciók, color=:white, linewidth=1.5)
-
-# --- Kamera automatikus illesztése vagy kézi limits beállítás ---
-# autolimits!(scene)
-# limits!(scene, FRect3D(Point3f(-1, -1, -1), Vec3f(2, 2, 2)))
+lines!(scene, pozíciók, color = :white, linewidth = 1.5)
 
 fig
