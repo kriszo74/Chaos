@@ -17,14 +17,6 @@ struct PulseIterator
     n_max::Int                      # iterációk száma
 end
 
-# # Gömbfelület generálása egyetlen hívással (GeometryBasics helper)
-# function create_detailed_sphere(center::Point3f, radius::Float32, res::Int = 48)
-#     sp     = Sphere(center, radius)               # beépített primitív
-#     verts  = GeometryBasics.coordinates(sp, res)  # res×res pont
-#     idxs   = GeometryBasics.faces(sp, res)        # indexlista
-#     return GeometryBasics.Mesh(verts, idxs)
-# end
-
 # --- PulseIterator iterate metódus ---
 Base.iterate(iter::PulseIterator, state = 0) =
     state > iter.n_max ? nothing : begin
