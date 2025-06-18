@@ -2,6 +2,7 @@
 using GLMakie
 using StaticArrays
 using GeometryBasics
+using Observables      # Observable támogatás
 
 # --- TimeSource (Időforrás) definíció ---
 struct TimeSource
@@ -33,9 +34,21 @@ source_origin = TimeSource(SVector(0.0, 0.0, 0.0), 0.5, 0.0)
 # PulseIterator beállítása (dt, lépésszám)
 pulse_iter = PulseIterator(source_origin, 0.05, 100)
 
+# --- Dinamikus változók (későbbi animációhoz) ---
+global_time = Observable(0f0)   # globális idő (s)
+
 # --- Megjelenítés (scene) ---
 include("3dtools.jl")
 fig, scene = setup_scene(; use_axis3 = true)
+
+# --- Időléptető feladat: a global_time Observable frissítése ---
+@async begin
+    dt = 0.02f0              # 50 FPS-nek megfelelő lépés
+    while isopen(fig.scene)
+        global_time[] += dt  # globális idő növelése
+        sleep(dt)
+    end
+end
 
 # --- Gömbhéjak kirajzolása ---
 for (pos, r) in pulse_iter
