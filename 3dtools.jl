@@ -28,6 +28,10 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471), use_axis3 = 
             yspinesvisible  = false, ylabelvisible = false, yticksvisible = false, yticklabelsvisible = false,
             zspinesvisible  = false, zlabelvisible = false, zticksvisible = false, zticklabelsvisible = false,
         )
+        # Fix limits beállítása az automatikus skálázás megakadályozására
+        xlims!(scene, -2, 2)
+        ylims!(scene, -2, 2)
+        zlims!(scene, -2, 2)
     else
         scene = LScene(fig[1, 1], show_axis = false)
         cam3d!(scene; projectiontype = :orthographic,
