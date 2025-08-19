@@ -4,140 +4,148 @@ using StaticArrays
 using GeometryBasics
 using Observables      # Observable támogatás
 
-# --- Globális paraméterek ---
-E = 0.1       # hullámterjedési sebesség (fénysebesség) = időlépés
-density = 1.0  # hullám density - időfelbontás
-max_t = 10.0   # maximális szimuláció idő
-t = Observable(0.0)  # globális idő
-
-# Pool‑infrastruktúra: fix méretű Observable‑tömbök aktív pulzusokhoz
-const MAX_PULSES = 100_000  # konzervatív teszthatár – később állítható
-
-# Minden pulzus pozíciója (Point3f) – induláskor (0,0,0)
-positions_pool = Observable(fill(Point3f(0, 0, 0), MAX_PULSES))
-
-# Minden pulzus sugara (Float32) – 0 = inaktív
-radii_pool = Observable(fill(Float32(0), MAX_PULSES))
-
-# -----------------------------------------------------------------------------
-# ÚJ: Több forráshoz saját Observable‑párok tárolása
-# Egyelőre a régi positions_pool / radii_pool a [1] elemként kerül ide,
-# hogy a további kód változatlanul működjön.
-# -----------------------------------------------------------------------------
-const positions_pools = Vector{Observable{Vector{Point3f}}}()
-const radii_pools     = Vector{Observable{Vector{Float32}}}()
-
-push!(positions_pools, positions_pool)  # index 1 – legacy default
-push!(radii_pools,    radii_pool)       # index 1 – legacy default
-
-# -----------------------------------------------------------------------------
-# Aktiváló függvény: új pulzus írása a legelső szabad slotba
-# (egyelőre csak a "legacy" 1-es poolra mutat)
-# -----------------------------------------------------------------------------
-function activate_pulse!(pos::Point3f)
-    # helyi másolatok a könnyebb íráshoz
-    pos_vec   = positions_pool[]
-    radii_vec = radii_pool[]
-    idx = findfirst(==(0f0), radii_vec)   # 0 sugár = szabad slot
-    if isnothing(idx)
-        @warn "Pulse pool full!"
-        return
-    end
-    pos_vec[idx]   = pos
-    radii_vec[idx] = 0f0
-    # visszaírjuk – ezzel pingeljük az Observable‑t
-    positions_pool[] = pos_vec
-    radii_pool[]     = radii_vec
-end
-
-# --- Source (Hullámforrás) definíció ---
-struct Source
-    act_p::SVector{3, Float64}  # aktuális pozíció
-    RV::SVector{3, Float64}     # mozgási sebesség vektor (RV=0 → álló forrás)
-    bas_t::Float64              # indulási (bázis) idő
-end
-
-# TODO: GPU shader optimalizáció - t uniform átadása GPU-nak,
-# sugár számítás shader-ben: radius = E * (t - birth_time)
-# Így elkerülhető a buffer update minden frame-ben
-
-# TODO: Observable alapú megjelenítés optimalizáció
-# positions_obs = Observable(Point3f[])
-# radii_obs = Observable(Float32[])
-# meshscatter!(scene, positions_obs, markersize=radii_obs, ...)
-# Így elkerülhető az új GPU buffer minden frame-ben
-
-# --- Forráskonténer ---
-sources = Vector{Source}()  # összes hullámforrás tárolója
-
-# Teszt forrás létrehozása
-push!(sources, Source(
-    SVector(0.0, 0.0, 0.0),  # act_p: origó
-    SVector(0.0, 0.0, 0.0),  # RV: álló forrás
-    0.0                      # bas_t: 0 időpontban indul
-))
-
-# --- Megjelenítés (scene) ---
 include("3dtools.jl")
-fig, scene = setup_scene(; use_axis3 = true)
 
-# Egyetlen scatter a pool‑Observable‑ökkel
-pool_scatter = meshscatter!(scene, positions_pool;
-    markersize = radii_pool,
-    color = :cyan,
-    transparency = true,
-    alpha = 0.1)
+# ============================
+# ÚJ ARCHITEKTÚRA
+# Cél: minden adat a Source-ban / Modelben legyen kapszulázva
+# ============================
 
-# A figure (jelenet) kirajzolása
-display(fig)
+# -- Szimulációs modell tartó --
+mutable struct PulsePool
+    positions::Observable{Vector{Point3d}}   # aktív/üres slotok pozíciói (Float64)
+    radii::Observable{Vector{Float64}}       # megjelenített sugarak (Float64)
+    birth::Observable{Vector{Float64}}       # születési idők (Inf = szabad slot)
+end
 
-# Async időléptető: forrásléptetés, pulzus‑aktiválás, sugártágítás
-@async begin
-    while t[] < max_t
-        # 1) Források léptetése és új pulzus aktiválása
-        for i in eachindex(sources)
-            src = sources[i]
-            new_pos = src.act_p + src.RV * density
-            activate_pulse!(Point3f(new_pos...))
-            sources[i] = Source(new_pos, src.RV, src.bas_t)
+function PulsePool(max::Int)
+    PulsePool(
+        Observable(fill(Point3d(0, 0, 0), max)),
+        Observable(fill(0.0, max)),
+        Observable(fill(Inf, max)),
+    )
+end
+
+mutable struct Source
+    act_p::SVector{3, Float64}  # aktuális pozíció (számítás: Float64)
+    RV::SVector{3, Float64}     # sebesség vektor
+    bas_t::Float64              # indulási idő (jövőbeli használatra)
+    pool::PulsePool             # saját pulzus-pool
+    color::Symbol               # megjelenítési szín
+    alpha::Float64              # áttetszőség
+end
+
+function Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
+                 color::Symbol=:cyan, alpha::Float64=0.1)
+    Source(pos, vel, start_t, PulsePool(0), color, alpha)
+end
+
+mutable struct Model
+    fig
+    scene
+    sources::Vector{Source}
+    t::Observable{Float64}
+    E::Float64
+    density::Float64
+    max_t::Float64
+end
+
+function Model(; E=0.1, density=1.0, max_t=10.0)
+    fig, scene = setup_scene(; use_axis3=true)
+    Model(fig, scene, Source[], Observable(0.0), E, density, max_t)
+end
+
+# -- Vizuális regisztráció forrásonként --
+function register_visual!(scene, src::Source)
+    meshscatter!(scene, src.pool.positions;
+        markersize = src.pool.radii,
+        color = src.color,
+        transparency = true,
+        alpha = src.alpha)
+end
+
+function add_source!(m::Model, src::Source)
+    push!(m.sources, src)
+    register_visual!(m.scene, src)
+    return src
+end
+
+# -----------------------------------------------------------------------------
+# ÚJ MÓDSZER (elszigetelt): előregenerált impulzusok (birth_times, positions)
+# -----------------------------------------------------------------------------
+function precompute_pulses!(src::Source; E::Float64=0.1, max_t::Float64=10.0, density::Int=1)
+    @assert density >= 1
+    # N = ceil((max_t - bas_t) * density / E)
+    N = Int(max(0, ceil((max_t - src.bas_t) * density / E)))
+    if N == 0
+        src.pool.positions[] = Point3d[]
+        src.pool.radii[]     = Float64[]
+        src.pool.birth[]     = Float64[]
+        return 0
+    end
+    dt_emit = E / density
+    t0 = src.bas_t
+    birth = Vector{Float64}(undef, N)
+    pos   = Vector{Point3d}(undef, N)
+    p0 = src.act_p
+    v  = src.RV
+    @inbounds for k in 0:N-1
+        tk = t0 + k * dt_emit
+        birth[k+1] = tk
+        pk = p0 + v * tk
+        pos[k+1] = Point3d(pk[1], pk[2], pk[3])
+    end
+    src.pool.positions[] = pos
+    src.pool.radii[]     = fill(0.0, N)
+    src.pool.birth[]     = birth
+    return N
+end
+
+
+
+function update_radii!(src::Source, E::Float64, tnow::Float64)
+    birth = src.pool.birth[]
+    radii = src.pool.radii[]
+    @inbounds for i in eachindex(birth)
+        b = birth[i]
+        radii[i] = isfinite(b) ? max(0.0, E * (tnow - b)) : 0.0
+    end
+    src.pool.radii[] = radii  # ping
+    return nothing
+end
+
+function step!(src::Source, E::Float64, tnow::Float64)
+    # pozícióléptetés
+    src.act_p = src.act_p + src.RV * E  # p(n+1) = p(n) + RV * E
+    # nincs új aktiválás: birth_times/positions előre generálva
+    update_radii!(src, E, tnow)  # láthatóvá teszi azokat, ahol tnow >= birth
+    return nothing
+end
+
+function run!(m::Model)
+    display(m.fig)
+    # Szinkron futás: a főszál blokkol, amíg tart az animáció vagy be nem zárják az ablakot
+    while isopen(m.fig.scene) && m.t[] < m.max_t
+        tnow = m.t[]
+        for src in m.sources
+            step!(src, m.E, tnow)
         end
-
-        # 2) Sugár tágítása in-place
-        radii_pool[] .+= Float32(E)
-        # ping Observable, hogy a scatter frissüljön
-        radii_pool[] = radii_pool[]
-
-        # 3) időlépés és alvás
-        t[] += E
-        sleep(E)
+        m.t[] = tnow + m.E
+        sleep(m.E)
     end
+    return m
 end
 
-# -----------------------------------------------------------------------------
-# ÚJ MÓDSZER (elszigetelt): pool-indexelt aktiválás
-# -----------------------------------------------------------------------------
-function activate_pulse!(pool_idx::Int, pos::Point3f)
-    pos_obs = positions_pools[pool_idx]
-    rad_obs = radii_pools[pool_idx]
-    pos_vec = pos_obs[]
-    rad_vec = rad_obs[]
-    idx = findfirst(==(0f0), rad_vec)   # 0 sugár = szabad slot
-    if isnothing(idx)
-        @warn "Pulse pool $(pool_idx) full!"
-        return
-    end
-    pos_vec[idx] = pos
-    rad_vec[idx] = 0f0
-    pos_obs[] = pos_vec
-    rad_obs[]  = rad_vec
+# ============================
+# FŐ INDÍTÁS (scriptként futtatva)
+# ============================
+if !isinteractive()
+    m = Model(; E=0.1, density=1.0, max_t=10.0)
+    src = Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
+                   color=:cyan, alpha = 0.1)
+    precompute_pulses!(src; E=m.E, max_t=m.max_t, density=Int(m.density))
+    add_source!(m, src)
+    run!(m)
 end
 
-# Elszigetelt tesztpélda (nem fut automatikusan):
-# Meghívás a REPL-ből:
-#     demo_activate_pulse_pool1!()
-# Elvárt: positions_pools[1][] első 0-sugarú slotja a megadott pozícióra áll.
-function demo_activate_pulse_pool1!()
-    activate_pulse!(1, Point3f(0, 0, 0))   # egyszerű próba a legacy poolon
-    return (positions_pools[1][], radii_pools[1][])
-end
 
