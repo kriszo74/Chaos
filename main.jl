@@ -106,9 +106,16 @@ end
 function update_radii!(src::Source, E::Float64, tnow::Float64)
     birth = src.pool.birth[]
     radii = src.pool.radii[]
-    @inbounds for i in eachindex(birth)
-        b = birth[i]
-        radii[i] = isfinite(b) ? max(0.0, E * (tnow - b)) : 0.0
+    N = length(birth)
+    # K: eddig megszületett impulzusok száma (t == bas_t → K = 0)
+    K = clamp(floor(Int, (tnow - src.bas_t)/E), 0, N)
+    @inbounds begin
+        for i in 1:K
+            radii[i] = max(0.0, E * (tnow - birth[i]))
+        end
+        if K < N
+            fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad (nem látszik)
+        end
     end
     src.pool.radii[] = radii  # ping
     return nothing
@@ -148,3 +155,5 @@ run!(m)
 if isopen(m.fig.scene)
     wait(m.fig.scene)  # tartsd nyitva az ablakot, amíg a felhasználó be nem zárja
 end
+
+
