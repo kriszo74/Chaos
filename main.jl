@@ -123,7 +123,6 @@ function step!(src::Source, E::Float64, tnow::Float64)
 end
 
 function run!(m::Model)
-    display(m.fig)
     # Szinkron futás: a főszál blokkol, amíg tart az animáció vagy be nem zárják az ablakot
     while isopen(m.fig.scene) && m.t[] < m.max_t
         tnow = m.t[]
@@ -139,13 +138,13 @@ end
 # ============================
 # FŐ INDÍTÁS (scriptként futtatva)
 # ============================
-if !isinteractive()
-    m = Model(; E=0.1, density=1.0, max_t=10.0)
-    src = Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
-                   color=:cyan, alpha = 0.1)
-    precompute_pulses!(src; E=m.E, max_t=m.max_t, density=Int(m.density))
-    add_source!(m, src)
-    run!(m)
+m = Model(; E=0.1, density=1.0, max_t=10.0)
+src = Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
+               color=:cyan, alpha = 0.1)
+precompute_pulses!(src; E=m.E, max_t=m.max_t, density=Int(m.density))
+add_source!(m, src)
+display(m.fig)  # a window élettartama ne a run! életciklusához kötődjön
+run!(m)
+if isopen(m.fig.scene)
+    wait(m.fig.scene)  # tartsd nyitva az ablakot, amíg a felhasználó be nem zárja
 end
-
-
