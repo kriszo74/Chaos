@@ -2,60 +2,43 @@
 using GLMakie
 using StaticArrays
 using GeometryBasics
-using Observables      # Observable támogatás
+using Observables  # Observable támogatás
 
 include("3dtools.jl")
 
-# ============================
-# ÚJ ARCHITEKTÚRA
-# Cél: minden adat a Source-ban / Modelben legyen kapszulázva
-# ============================
+# Architektúra: adatok kapszulázása Source/Model-ben
 
-# -- Szimulációs modell tartó --
+# PulsePool: előregenerált adatok (pozíció, sugár, születési idő)
 mutable struct PulsePool
-    positions::Observable{Vector{Point3d}}   # aktív/üres slotok pozíciói (Float64)
-    radii::Observable{Vector{Float64}}       # megjelenített sugarak (Float64)
-    birth::Observable{Vector{Float64}}       # születési idők (Inf = szabad slot)
+    positions::Observable{Vector{Point3d}}   # pozíciók (Point3d)
+    radii::Observable{Vector{Float64}}       # sugarak (Float64)
+    birth::Observable{Vector{Float64}}       # születési idők (Inf = inaktív)
 end
 
-function PulsePool(max::Int)
-    PulsePool(
-        Observable(fill(Point3d(0, 0, 0), max)),
-        Observable(fill(0.0, max)),
-        Observable(fill(Inf, max)),
-    )
+
+# Üres PulsePool gyár – WHY: előkészítés a max::Int kivezetéséhez
+function PulsePool()
+    PulsePool(Observable(Point3d[]), Observable(Float64[]), Observable(Float64[]))
 end
 
+# Source: mozgás + saját pool + megjelenítési paraméterek
 mutable struct Source
-    act_p::SVector{3, Float64}  # aktuális pozíció (számítás: Float64)
+    act_p::SVector{3, Float64}  # aktuális pozíció
     RV::SVector{3, Float64}     # sebesség vektor
-    bas_t::Float64              # indulási idő (jövőbeli használatra)
-    pool::PulsePool             # saját pulzus-pool
-    color::Symbol               # megjelenítési szín
+    bas_t::Float64              # indulási idő
+    pool::PulsePool             # saját pool
+    color::Symbol               # szín
     alpha::Float64              # áttetszőség
 end
 
 function Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
                  color::Symbol=:cyan, alpha::Float64=0.1)
-    Source(pos, vel, start_t, PulsePool(0), color, alpha)
+    Source(pos, vel, start_t, PulsePool(), color, alpha)
 end
 
-mutable struct Model
-    fig
-    scene
-    sources::Vector{Source}
-    t::Observable{Float64}
-    E::Float64
-    density::Float64
-    max_t::Float64
-end
 
-function Model(; E=0.1, density=1.0, max_t=10.0)
-    fig, scene = setup_scene(; use_axis3=true)
-    Model(fig, scene, Source[], Observable(0.0), E, density, max_t)
-end
 
-# -- Vizuális regisztráció forrásonként --
+# Forrás vizuális regisztrációja
 function register_visual!(scene, src::Source)
     meshscatter!(scene, src.pool.positions;
         markersize = src.pool.radii,
@@ -64,15 +47,15 @@ function register_visual!(scene, src::Source)
         alpha = src.alpha)
 end
 
-function add_source!(m::Model, src::Source)
-    push!(m.sources, src)
-    register_visual!(m.scene, src)
+
+# Model nélküli add_source! overload – WHY: egységes API Model nélkül is
+function add_source!(scene, sources::Vector{Source}, src::Source)
+    push!(sources, src)
+    register_visual!(scene, src)
     return src
 end
 
-# -----------------------------------------------------------------------------
-# ÚJ MÓDSZER (elszigetelt): előregenerált impulzusok (birth_times, positions)
-# -----------------------------------------------------------------------------
+# Előregenerálás: birth_times és positions
 function precompute_pulses!(src::Source; E::Float64=0.1, max_t::Float64=10.0, density::Int=1)
     @assert density >= 1
     # N = ceil((max_t - bas_t) * density / E)
@@ -101,8 +84,7 @@ function precompute_pulses!(src::Source; E::Float64=0.1, max_t::Float64=10.0, de
     return N
 end
 
-
-
+# K-alapú sugárfrissítés
 function update_radii!(src::Source, E::Float64, tnow::Float64)
     birth = src.pool.birth[]
     radii = src.pool.radii[]
@@ -114,46 +96,48 @@ function update_radii!(src::Source, E::Float64, tnow::Float64)
             radii[i] = max(0.0, E * (tnow - birth[i]))
         end
         if K < N
-            fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad (nem látszik)
+            fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad
         end
     end
     src.pool.radii[] = radii  # ping
     return nothing
 end
 
+# Egy lépés: p(n+1) = p(n) + RV * E, majd sugárfrissítés
 function step!(src::Source, E::Float64, tnow::Float64)
-    # pozícióléptetés
     src.act_p = src.act_p + src.RV * E  # p(n+1) = p(n) + RV * E
-    # nincs új aktiválás: birth_times/positions előre generálva
-    update_radii!(src, E, tnow)  # láthatóvá teszi azokat, ahol tnow >= birth
+    update_radii!(src, E, tnow)         # tnow >= birth esetén látható
     return nothing
 end
 
-function run!(m::Model)
-    # Szinkron futás: a főszál blokkol, amíg tart az animáció vagy be nem zárják az ablakot
-    while isopen(m.fig.scene) && m.t[] < m.max_t
-        tnow = m.t[]
-        for src in m.sources
-            step!(src, m.E, tnow)
+
+# Model nélküli futtató // WHY: egyszerűbb futtatás Model nélkül
+function run!(fig, scene, sources::Vector{Source}, t::Observable{Float64}, E::Float64, max_t::Float64)
+    while isopen(fig.scene) && t[] < max_t
+        tnow = t[]
+        for src in sources
+            step!(src, E, tnow)
         end
-        m.t[] = tnow + m.E
-        sleep(m.E)
+        t[] = tnow + E
+        sleep(E)
     end
-    return m
+    return nothing
 end
 
-# ============================
-# FŐ INDÍTÁS (scriptként futtatva)
-# ============================
-m = Model(; E=0.1, density=1.0, max_t=10.0)
+# Fő indítás – Model nélkül (aktív)
+fig, scene = setup_scene(; use_axis3=true)
+t = Observable(0.0)
+E = 0.1
+density = 1.0
+max_t = 10.0
+
+sources = Source[]
 src = Source(; pos=SVector(0.0,0.0,0.0), vel=SVector(0.0,0.0,0.0), start_t=0.0,
                color=:cyan, alpha = 0.1)
-precompute_pulses!(src; E=m.E, max_t=m.max_t, density=Int(m.density))
-add_source!(m, src)
-display(m.fig)  # a window élettartama ne a run! életciklusához kötődjön
-run!(m)
-if isopen(m.fig.scene)
-    wait(m.fig.scene)  # tartsd nyitva az ablakot, amíg a felhasználó be nem zárja
+precompute_pulses!(src; E=E, max_t=max_t, density=Int(density))
+add_source!(scene, sources, src)  # WHY: egységes add_source API
+display(fig)  # az ablak életciklusa ne a run!-hoz kötődjön
+run!(fig, scene, sources, t, E, max_t)
+if isopen(fig.scene)
+    wait(fig.scene)  # nyitva marad, amíg be nem zárod
 end
-
-
