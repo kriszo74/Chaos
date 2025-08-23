@@ -1,4 +1,4 @@
-# ---- main.jl ----
+# ---- main.jl ---- 
 using GLMakie
 using StaticArrays
 using GeometryBasics
@@ -6,26 +6,22 @@ using Observables  # Observable támogatás
 
 include("3dtools.jl")
 
-# Architektúra: adatok kapszulázása Source/Model-ben
+# Alap adatszerkezetek
 
-
-# Source: mozgás + saját pool + megjelenítési paraméterek
+# Source: mozgás és megjelenítési adatok
 mutable struct Source
     act_p::SVector{3, Float64}  # aktuális pozíció
     RV::SVector{3, Float64}     # sebesség vektor
     bas_t::Float64              # indulási idő
-    positions::Observable{Vector{Point3d}}   # pozíciók (Point3d)
+    positions::Vector{Point3d}   # pozíciók (Point3d)  # később megfontolandó: Observable
     radii::Observable{Vector{Float64}}       # sugarak (Float64)
-    birth::Observable{Vector{Float64}}       # születési idők (Inf = inaktív)
+    birth::Vector{Float64}       # születési idők (Inf = inaktív)  # később megfontolandó: Observable
     color::Symbol               # szín
     alpha::Float64              # áttetszőség
 end
 
-
-
-
-# add_source! – WHY: egységes API, vizuál regisztráció inline
-function add_source!(scene, sources::Vector{Source}, src::Source)
+# add_source!: forrás hozzáadása és vizuális regisztráció
+function add_source!(src::Source)
     push!(sources, src)
     meshscatter!(scene, src.positions;
         markersize = src.radii,
@@ -35,38 +31,27 @@ function add_source!(scene, sources::Vector{Source}, src::Source)
     return src
 end
 
-# Előregenerálás: birth_times és positions
-function precompute_pulses!(src::Source; E::Float64=0.1, max_t::Float64=10.0, density::Int=1)
-    @assert density >= 1
-    # N = ceil((max_t - bas_t) * density / E)
-    N = Int(max(0, ceil((max_t - src.bas_t) * density / E)))
-    if N == 0
-        src.positions[] = Point3d[]
-        src.radii[]     = Float64[]
-        src.birth[]     = Float64[]
-        return 0
-    end
-    dt_emit = E / density
+# Előregenerálás: impulzusok (birth, positions)
+function precompute_pulses!(src::Source)
+    N = Int(ceil((max_t - src.bas_t) * density))
     t0 = src.bas_t
-    birth = Vector{Float64}(undef, N)
-    pos   = Vector{Point3d}(undef, N)
+    src.birth     = Vector{Float64}(undef, N)
+    src.positions = Vector{Point3d}(undef, N)
     p0 = src.act_p
     v  = src.RV
     @inbounds for k in 0:N-1
         tk = t0 + k * dt_emit
-        birth[k+1] = tk
+        src.birth[k+1] = tk
         pk = p0 + v * tk
-        pos[k+1] = Point3d(pk[1], pk[2], pk[3])
+        src.positions[k+1] = Point3d(pk[1], pk[2], pk[3])
     end
-    src.positions[] = pos
-    src.radii[]     = fill(0.0, N)
-    src.birth[]     = birth
+    src.radii[] = fill(0.0, N)
     return N
 end
 
 # K-alapú sugárfrissítés
-function update_radii!(src::Source, E::Float64, tnow::Float64)
-    birth = src.birth[]
+function update_radii!(src::Source, tnow::Float64)
+    birth = src.birth
     radii = src.radii[]
     N = length(birth)
     # K: eddig megszületett impulzusok száma (t == bas_t → K = 0)
@@ -79,40 +64,35 @@ function update_radii!(src::Source, E::Float64, tnow::Float64)
             fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad
         end
     end
-    src.radii[] = radii  # ping
+    src.radii[] = radii
     return nothing
 end
 
-
-# Model nélküli futtató // WHY: egyszerűbb futtatás Model nélkül
-function run!(fig, scene, sources::Vector{Source}, E::Float64, max_t::Float64)
-    t = 0.0  # WHY: lokális idő, nem Observable
-    while isopen(fig.scene) && t < max_t
-        tnow = t
-        for src in sources
-            src.act_p = src.act_p + src.RV * E  # p(n+1) = p(n) + RV * E
-            update_radii!(src, E, tnow)         # WHY: sugárfrissítés
-        end
-        t = tnow + E
-        sleep(E)
-    end
-    return nothing
-end
-
-# Fő indítás – Model nélkül (aktív)
+# Fő indítás
 fig, scene = setup_scene(; use_axis3=true)
 E = 0.1
 density = 1.0
+dt_emit = 1 / density   # globális emissziós időköz (emisszió független E-től)
 max_t = 10.0
 
 sources = Source[]
 src = Source(SVector(0.0,0.0,0.0), SVector(0.0,0.0,0.0), 0.0,
-             Observable(Point3d[]), Observable(Float64[]), Observable(Float64[]),
-             :cyan, 0.1)  # WHY: kulcsszavas ctor kivezetéséhez
-precompute_pulses!(src; E=E, max_t=max_t, density=Int(density))
-add_source!(scene, sources, src)  # WHY: egységes add_source API
-display(fig)  # az ablak életciklusa ne a run!-hoz kötődjön
-run!(fig, scene, sources, E, max_t)
+             Point3d[], Observable(Float64[]), Float64[], 
+             :cyan, 0.1)
+precompute_pulses!(src)
+add_source!(src)
+display(fig)  # ablak megjelenítése
+let t = 0.0  # lokális t a ciklushoz
+    while isopen(fig.scene) && t < max_t
+        tnow = t
+        for src in sources
+            src.act_p = src.act_p + src.RV * E  # p(n+1) = p(n) + RV * E
+            update_radii!(src, tnow)         # sugárfrissítés
+        end
+        t = tnow + E
+        sleep(E)
+    end
+end
 if isopen(fig.scene)
     wait(fig.scene)  # nyitva marad, amíg be nem zárod
 end
