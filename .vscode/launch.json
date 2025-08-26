@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "julia",
+      "request": "launch",
+      "name": "Run active Julia file (Release)",
+      "program": "${file}",
+      "stopOnEntry": false,
+      "cwd": "${workspaceFolder}",
+      "env": {},
+      "juliaEnv": "${command:activeJuliaEnvironment}"
+    },
+    {
+      "type": "julia",
+      "request": "launch",
+      "name": "Run active Julia file (Debug)",
+      "program": "${file}",
+      "stopOnEntry": false,
+      "cwd": "${workspaceFolder}",
+      "env": { "APP_DEBUG": "1" },
+      "juliaEnv": "${command:activeJuliaEnvironment}"
+    }
+  ]
+}

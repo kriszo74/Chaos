@@ -4,6 +4,10 @@ using StaticArrays
 using GeometryBasics
 using Observables  # Observable támogatás
 
+const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
+#const DEBUG_MODE = true  # ideiglenes, csak ellenőrzéshez
+@info "DEBUG_MODE" DEBUG_MODE
+
 include("3dtools.jl")
 
 # Alap adatszerkezetek
@@ -40,7 +44,7 @@ function precompute_pulses!(src::Source)
     p0 = src.act_p
     v  = src.RV
     @inbounds for k in 0:N-1
-        tk = t0 + k * dt_emit
+        tk = t0 + k / density  # dt_emit helyett
         src.birth[k+1] = tk
         pk = p0 + v * tk
         src.positions[k+1] = Point3d(pk[1], pk[2], pk[3])
@@ -55,10 +59,10 @@ function update_radii!(src::Source, tnow::Float64)
     radii = src.radii[]
     N = length(birth)
     # K: eddig megszületett impulzusok száma (t == bas_t → K = 0)
-    K = clamp(floor(Int, (tnow - src.bas_t)/E), 0, N)
+    K = clamp(floor(Int, (tnow - src.bas_t) * density), 0, N)
     @inbounds begin
         for i in 1:K
-            radii[i] = max(0.0, E * (tnow - birth[i]))
+            radii[i] = max(0.0, (tnow - birth[i]))
         end
         if K < N
             fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad
@@ -72,7 +76,6 @@ end
 fig, scene = setup_scene(; use_axis3=true)
 E = 0.1
 density = 1.0
-dt_emit = 1 / density   # globális emissziós időköz (emisszió független E-től)
 max_t = 10.0
 
 sources = Source[]
@@ -83,14 +86,32 @@ precompute_pulses!(src)
 add_source!(src)
 display(fig)  # ablak megjelenítése
 let t = 0.0  # lokális t a ciklushoz
+    target = 1/60                 # 60 Hz felső korlát
+    tprev = time_ns()/1e9         # előző frame időbélyeg (s)
     while isopen(fig.scene) && t < max_t
-        tnow = t
-        for src in sources
-            src.act_p = src.act_p + src.RV * E  # p(n+1) = p(n) + RV * E
-            update_radii!(src, tnow)         # sugárfrissítés
+        tnow_real = time_ns()/1e9
+
+        @static if DEBUG_MODE
+            dt = 1/60                 # debug: fix 60 Hz
+        else
+            dt = tnow_real - tprev    # eltelt valós idő (s)
         end
-        t = tnow + E
-        sleep(E)
+
+        tprev = tnow_real
+
+        t += E * dt               # E mint sebességszorzó (frame-vezérelt idő)
+        tnow = t
+
+        for src in sources
+            src.act_p = src.act_p + src.RV * (E * dt)  # folyamatos idő szerinti elmozdulás
+            update_radii!(src, tnow)
+        end
+
+        frame_used = (time_ns()/1e9) - tnow_real
+        rem = target - frame_used
+        if rem > 0
+            sleep(rem)            # 60 Hz cap
+        end
     end
 end
 if isopen(fig.scene)
