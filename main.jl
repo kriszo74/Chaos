@@ -5,7 +5,6 @@ using GeometryBasics
 using Observables  # Observable támogatás
 
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
-#const DEBUG_MODE = true  # ideiglenes, csak ellenőrzéshez
 @info "DEBUG_MODE" DEBUG_MODE
 
 include("3dtools.jl")
@@ -58,11 +57,10 @@ function update_radii!(src::Source, tnow::Float64)
     birth = src.birth
     radii = src.radii[]
     N = length(birth)
-    # K: eddig megszületett impulzusok száma (t == bas_t → K = 0)
-    K = clamp(floor(Int, (tnow - src.bas_t) * density), 0, N)
+    K = ceil(Int, (tnow - src.bas_t) * density)  # Aktív impulzusok száma az adott időpillanatban
     @inbounds begin
         for i in 1:K
-            radii[i] = max(0.0, (tnow - birth[i]))
+            radii[i] = (tnow - birth[i])  # eltelt idő az i. impulzus óta
         end
         if K < N
             fill!(view(radii, K+1:N), 0.0)  # a többinek 0 marad
