@@ -66,9 +66,10 @@ add_source!(src)
 
 display(fig)  # ablak megjelenítése
 
-let t = 0.0  # lokális t a ciklushoz
-    target = 1/60                 # 60 Hz felső korlát
+@async begin
+    t = 0.0  # lokális t a ciklushoz
     tprev = time_ns()/1e9         # előző frame időbélyeg (s)
+    target = 1/60                 # 60 Hz felső korlát
     while isopen(fig.scene) && t < max_t
         tnow_real = time_ns()/1e9
 
