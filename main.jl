@@ -68,31 +68,30 @@ display(fig)  # ablak megjelenítése
 
 @async begin
     t = 0.0  # lokális t a ciklushoz
-    tprev = time_ns()/1e9         # előző frame időbélyeg (s)
     target = 1/60                 # 60 Hz felső korlát
-    while isopen(fig.scene) && t < max_t
-        tnow_real = time_ns()/1e9
+    dt = target                   # kezdeti dt (s)
+    while isopen(fig.scene)
+        tprev = time_ns()/1e9
+        t += E * dt               # E mint sebességszorzó (frame-vezérelt idő)
+        if t >= max_t
+            break
+        end
+
+        for src in sources
+            src.act_p = src.act_p + src.RV * (E * dt)  # folyamatos idő szerinti elmozdulás
+            src.radii[] = update_radii(src.radii[], src.bas_t, t, density)  # sugárfrissítés (visszatérő)
+        end
+
+        frame_used = (time_ns()/1e9) - tprev
+        rem = target - frame_used
+        if rem > 0
+            sleep(rem)            # 60 Hz cap
+        end
 
         @static if DEBUG_MODE
             dt = 1/60                 # debug: fix 60 Hz
         else
-            dt = tnow_real - tprev    # eltelt valós idő (s)
-        end
-
-        tprev = tnow_real
-
-        t += E * dt               # E mint sebességszorzó (frame-vezérelt idő)
-        tnow = t
-
-        for src in sources
-            src.act_p = src.act_p + src.RV * (E * dt)  # folyamatos idő szerinti elmozdulás
-            src.radii[] = update_radii(src.radii[], src.bas_t, tnow, density)  # sugárfrissítés (visszatérő)
-        end
-
-        frame_used = (time_ns()/1e9) - tnow_real
-        rem = target - frame_used
-        if rem > 0
-            sleep(rem)            # 60 Hz cap
+            dt = (time_ns()/1e9) - tprev   # eltelt valós idő (s)
         end
     end
 end
