@@ -24,6 +24,7 @@ function add_source!(src::Source)
     src.radii[] = fill(0.0, N)
     push!(sources, src)
     meshscatter!(scene, src.positions;
+        marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0), 
         markersize = src.radii,
         color = src.color,
         transparency = true,
@@ -72,13 +73,14 @@ display(fig)  # ablak megjelenítése
     dt = target                   # kezdeti dt (s)
     while isopen(fig.scene)
         tprev = time_ns()/1e9
-        t += E * dt               # E mint sebességszorzó (frame-vezérelt idő)
-        if t >= max_t
+        step = E * dt             # időlépés (s)
+        t += step                 # frame-vezérelt idő
+        if t > max_t
             break
         end
 
         for src in sources
-            src.act_p = src.act_p + src.RV * (E * dt)  # folyamatos idő szerinti elmozdulás
+            src.act_p = src.act_p + src.RV * step  # folyamatos idő szerinti elmozdulás
             src.radii[] = update_radii(src.radii[], src.bas_t, t, density)  # sugárfrissítés (visszatérő)
         end
 
@@ -88,10 +90,8 @@ display(fig)  # ablak megjelenítése
             sleep(rem)            # 60 Hz cap
         end
 
-        @static if DEBUG_MODE
-            dt = 1/60                 # debug: fix 60 Hz
-        else
-            dt = (time_ns()/1e9) - tprev   # eltelt valós idő (s)
+        @static if !DEBUG_MODE
+            dt = max(target, frame_used)   # min. target, overrun-nál frame_used
         end
     end
 end

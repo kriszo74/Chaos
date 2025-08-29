@@ -42,30 +42,3 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471), use_axis3 = 
 
     return fig, scene
 end
-
-# -----------------------------------------------------------------------------
-# Gömb animációs segédfüggvény: növekvő sugár
-# -----------------------------------------------------------------------------
-function animate_growing_sphere()
-    fig, scene = setup_scene()
-    pos  = Node(Point3f0(0))
-    rad  = Node(0f0)
-    sp   = create_detailed_sphere(Point3f(0, 0, 0), 1f0, 48)
-
-    mesh!(scene, sp;
-        scale = rad, translation = pos,
-        color = RGBAf0(0.6, 1, 1, 0.3), shading = NoShading)
-
-    @async begin
-        t  = 0f0
-        dt = 0.02f0
-        c  = 0.5f0
-        while isopen(fig.scene)
-            t += dt
-            rad[] = t * c
-            sleep(dt)
-        end
-    end
-
-    return fig
-end
