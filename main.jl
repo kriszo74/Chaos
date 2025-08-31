@@ -52,20 +52,24 @@ const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
 
 # világállandók (kezdeti beállítások)
-E = 1
+E = 3
 density = 1.0
 max_t = 10.0
 
 # jelenet beállítása
 include("3dtools.jl")
-fig, scene = setup_scene(; use_axis3=true)
+fig, scene = setup_scene(; use_axis3=false)
 
 # források hozzáadása tesztként
 sources = Source[]
 src = Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.1)
 add_source!(src)
 
+#TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
 display(fig)  # ablak megjelenítése
+zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
+#scale!(scene.scene, 0.8, 0.8, 0.8) # ez is csak display(fig) után működik.
+#update_cam!-ot lenne a legjobb használni.
 
 @async begin
     t = 0.0  # lokális t a ciklushoz
@@ -95,3 +99,4 @@ display(fig)  # ablak megjelenítése
         end
     end
 end
+

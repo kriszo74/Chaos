@@ -15,9 +15,10 @@ end
 # Jelenet (Scene) létrehozása – háttérszínnel, opcionális Axis3-mal
 # -----------------------------------------------------------------------------
 function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471), use_axis3 = true)
-    fig = Figure(backgroundcolor = backgroundcolor)  # fő figura
+    fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)  # fő figura
 
     if use_axis3
+        # DEPRECATED: Axis3 ág – ideiglenes; TODO: remove after LScene finalized
         scene = Axis3(fig[1, 1],
             aspect          = :data,
             perspectiveness = 0.0,
@@ -35,10 +36,9 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471), use_axis3 = 
     else
         scene = LScene(fig[1, 1], show_axis = false)
         cam3d!(scene; projectiontype = :orthographic,
-                eyeposition  = Vec3f(0, 0, 4),
+                eyeposition  = Vec3f(0, 0, 1),
                 lookat       = Vec3f(0, 0, 0),
                 upvector     = Vec3f(0, 1, 0))
     end
-
     return fig, scene
 end
