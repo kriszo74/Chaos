@@ -32,6 +32,7 @@ function add_source!(src::Source)
     return src
 end
 
+#TODO: később a GPU-n fusson (CUDA.jl)
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, density::Float64)    # meglévő puffer (argumentum)
     dt_rel = (tnow - bas_t)     # eltelt idő a bázistól
@@ -51,6 +52,8 @@ end
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
 
+# EXP_GUI removed; GUI always active
+
 # világállandók (kezdeti beállítások)
 E = 3
 density = 1.0
@@ -65,6 +68,21 @@ sources = Source[]
 src = Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.1)
 add_source!(src)
 
+running = Observable(false)  # exp_gui: Start gomb jelző // TODO: remove after step 2
+
+include("gui.jl")
+setup_gui!(fig, scene, src, running)
+
+#=     @async begin
+        while isopen(fig.scene)
+            global E  # WHY: E élő frissítése futás közben
+            E = exp_gui_sE.value[]
+            sleep(0.05)  # ~20 Hz
+        end
+    end
+end
+
+ =#
 #TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
 display(fig)  # ablak megjelenítése
 zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
@@ -76,6 +94,7 @@ zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
     target = 1/60                 # 60 Hz felső korlát
     dt = target                   # kezdeti dt (s)
     while isopen(fig.scene)
+        if !running[]; sleep(0.05); continue; end  # WHY: Start gombig vár
         tprev = time_ns()/1e9
         step = E * dt             # időlépés (s)
         t += step                 # frame-vezérelt idő
@@ -99,4 +118,3 @@ zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
         end
     end
 end
-
