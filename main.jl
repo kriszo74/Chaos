@@ -5,6 +5,11 @@ using GeometryBasics
 using Observables  # Observable támogatás
 
 # Source: mozgás és megjelenítési adatok
+# TODO (arch/perf roadmap):
+# - Source karcsúsítása: positions, radii, plot → nézet/regiszter; color, alpha → handle-ről.
+# - act_p → p0; pozíció számítása: p(t) = p0 + RV*(t - bas_t) (ne frissítsük minden frame-ben).
+# - Több forrásnál: 1 instanced plot + attribútumtömbök (pos offset, radius, color, alpha).
+# - Csak akkor lépjünk, ha mérhető perf-korlát jelentkezik.
 mutable struct Source
     act_p::SVector{3, Float64}  # aktuális pozíció
     RV::SVector{3, Float64}     # sebesség vektor
@@ -13,6 +18,7 @@ mutable struct Source
     radii::Observable{Vector{Float64}}       # sugarak (Float64)
     color::Symbol               # szín
     alpha::Float64              # áttetszőség
+    plot::Any                 # plot handle
 end
 
 # add_source!: forrás hozzáadása és vizuális regisztráció
@@ -22,13 +28,14 @@ function add_source!(src::Source)
     dp     = src.RV / density                     # két impulzus közti eltolás
     src.positions = [Point3d((p_base + dp * k)...) for k in 0:N-1]
     src.radii[] = fill(0.0, N)
-    push!(sources, src)
-    meshscatter!(scene, src.positions;
+    push!(sources, src)    
+    ph = meshscatter!(scene, src.positions;
         marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0), 
         markersize = src.radii,
         color = src.color,
         transparency = true,
         alpha = src.alpha)
+    src.plot = ph  # GUI-kötésekhez
     return src
 end
 
@@ -52,8 +59,6 @@ end
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
 
-# EXP_GUI removed; GUI always active
-
 # világállandók (kezdeti beállítások)
 E = 3
 density = 1.0
@@ -65,24 +70,14 @@ fig, scene = setup_scene(; use_axis3=false)
 
 # források hozzáadása tesztként
 sources = Source[]
-src = Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.1)
+src = Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.1, nothing)
 add_source!(src)
 
-running = Observable(false)  # exp_gui: Start gomb jelző // TODO: remove after step 2
+running = Observable(false)  # Animáció indításának jelzője (Start gomb)
 
 include("gui.jl")
 setup_gui!(fig, scene, src, running)
 
-#=     @async begin
-        while isopen(fig.scene)
-            global E  # WHY: E élő frissítése futás közben
-            E = exp_gui_sE.value[]
-            sleep(0.05)  # ~20 Hz
-        end
-    end
-end
-
- =#
 #TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
 display(fig)  # ablak megjelenítése
 zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
@@ -94,7 +89,7 @@ zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
     target = 1/60                 # 60 Hz felső korlát
     dt = target                   # kezdeti dt (s)
     while isopen(fig.scene)
-        if !running[]; sleep(0.05); continue; end  # WHY: Start gombig vár
+        if !running[]; sleep(0.05); continue; end  # Start gombig vár
         tprev = time_ns()/1e9
         step = E * dt             # időlépés (s)
         t += step                 # frame-vezérelt idő
