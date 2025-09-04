@@ -73,10 +73,8 @@ sources = Source[]
 src = Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.1, nothing)
 add_source!(src)
 
-running = Observable(false)  # Animáció indításának jelzője (Start gomb)
-
 include("gui.jl")
-setup_gui!(fig, scene, src, running)
+setup_gui!(fig, scene, src)
 
 #TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
 display(fig)  # ablak megjelenítése
@@ -84,32 +82,42 @@ zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
 #scale!(scene.scene, 0.8, 0.8, 0.8) # ez is csak display(fig) után működik.
 #update_cam!-ot lenne a legjobb használni.
 
-@async begin
-    t = 0.0  # lokális t a ciklushoz
-    target = 1/60                 # 60 Hz felső korlát
-    dt = target                   # kezdeti dt (s)
-    while isopen(fig.scene)
-        if !running[]; sleep(0.05); continue; end  # Start gombig vár
-        tprev = time_ns()/1e9
-        step = E * dt             # időlépés (s)
-        t += step                 # frame-vezérelt idő
-        if t > max_t
-            break
-        end
+# ÚJ: gomb-indítású szimuláció külön feladatban
+sim_task = Observable{Union{Nothing,Task}}(nothing)  # futó szimuláció task-ja
+paused   = Observable(false)  # Pause jelző
 
-        for src in sources
-            src.act_p = src.act_p + src.RV * step  # folyamatos idő szerinti elmozdulás
-            src.radii[] = update_radii(src.radii[], src.bas_t, t, density)  # sugárfrissítés (visszatérő)
-        end
+function start_sim!(fig, scene, sources)
+    # Dupla-indítás védelem
+    if sim_task[] !== nothing && !istaskdone(sim_task[])
+        @info "start_sim!: already running, reusing existing task"
+        return sim_task[]
+    end
 
-        frame_used = (time_ns()/1e9) - tprev
-        rem = target - frame_used
-        if rem > 0
-            sleep(rem)            # 60 Hz cap
-        end
-
-        @static if !DEBUG_MODE
-            dt = max(target, frame_used)   # min. target, overrun-nál frame_used
+    sim_task[] = @async begin
+        t = 0.0
+        target = 1/60
+        dt = target
+        while isopen(fig.scene)
+            if paused[]; sleep(0.05); continue; end  # Pause alatt pihen
+            tprev = time_ns()/1e9
+            step = E * dt
+            t += step
+            if t > max_t
+                break
+            end
+            for src in sources
+                src.act_p = src.act_p + src.RV * step
+                src.radii[] = update_radii(src.radii[], src.bas_t, t, density)
+            end
+            frame_used = (time_ns()/1e9) - tprev
+            rem = target - frame_used
+            if rem > 0
+                sleep(rem)
+            end
+            @static if !DEBUG_MODE
+                dt = max(target, frame_used)
+            end
         end
     end
+    return sim_task[]
 end
