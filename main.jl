@@ -66,7 +66,7 @@ max_t = 10.0
 
 # jelenet beállítása
 include("3dtools.jl")
-fig, scene = setup_scene(; use_axis3=false)
+fig, scene = setup_scene()
 
 # források hozzáadása tesztként
 sources = Source[]

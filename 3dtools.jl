@@ -12,33 +12,15 @@ function create_detailed_sphere(center::Point3f, radius::Float32, res::Int = 48)
 end
 
 # -----------------------------------------------------------------------------
-# Jelenet (Scene) létrehozása – háttérszínnel, opcionális Axis3-mal
+# Jelenet (Scene) létrehozása háttérszínnel — mindig LScene, ortografikus kamera
 # -----------------------------------------------------------------------------
-function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471), use_axis3 = true)
-    fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)  # fő figura
-
-    if use_axis3
-        # DEPRECATED: Axis3 ág – ideiglenes; TODO: remove after LScene finalized
-        scene = Axis3(fig[1, 1],
-            aspect          = :data,
-            perspectiveness = 0.0,
-            elevation       = π/2,
-            azimuth         = 3π/2,
-            xgridvisible    = false, ygridvisible = false, zgridvisible = false,
-            xspinesvisible  = false, xlabelvisible = false, xticksvisible = false, xticklabelsvisible = false,
-            yspinesvisible  = false, ylabelvisible = false, yticksvisible = false, yticklabelsvisible = false,
-            zspinesvisible  = false, zlabelvisible = false, zticksvisible = false, zticklabelsvisible = false,
-        )
-        # Fix limits beállítása az automatikus skálázás megakadályozására
-        xlims!(scene, -2, 2)
-        ylims!(scene, -2, 2)
-        zlims!(scene, -2, 2)
-    else
-        scene = LScene(fig[1, 1], show_axis = false)
-        cam3d!(scene; projectiontype = :orthographic,
-                eyeposition  = Vec3f(0, 0, 1),
-                lookat       = Vec3f(0, 0, 0),
-                upvector     = Vec3f(0, 1, 0))
-    end
+function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
+    fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)
+    scene = LScene(fig[1, 1], show_axis = false)
+    cam3d!(scene; projectiontype = :orthographic,
+            eyeposition  = Vec3f(0, 0, 1),
+            lookat       = Vec3f(0, 0, 0),
+            upvector     = Vec3f(0, 1, 0))
     return fig, scene
 end
+
