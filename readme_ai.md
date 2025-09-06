@@ -49,10 +49,6 @@
 
 - Itt vezetjük a feladatokat és részfeladatokat. Új elemek a lista tetejére kerülnek. Rövid elfogadási kritériumok javasoltak.
 
-- UTF-8 javítás (mojibake eltüntetése)
-  - Cél: magyar kommentek és sztringek helyes ékezetekkel a `main.jl`, `gui.jl`, `3dtools.jl` fájlokban.
-  - Elfogadás: nincs több "�" karakter; csak szöveg változik, működés nem.
-
 - GUI és vezérlők
   - `rebuild_controls!`: preset váltáskor a vezérlők dinamikus újraépítése.
   - Alpha-kezelés: forrásonkénti csúszkák automatikus létrehozása és kötése a plothoz.
