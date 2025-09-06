@@ -34,7 +34,7 @@ function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
     return btn
 end
 
-# Segédfüggvény: preset alapú vezérlő-újraépítés (stub)
+# Segédfüggvény: preset alapú vezérlők-újraépítés (stub)
 function rebuild_controls!(fig, gl, scene, src, preset::String)
     @info "preset_changed" preset  # TODO: később itt építjük át a vezérlőket/forrásokat
     return nothing
@@ -58,14 +58,14 @@ function setup_gui!(fig, scene, src, running=nothing)  # running: elhanyagolva, 
     preset_menu = mk_menu!(fig, gl, 2, "Preset", presets;
                            onchange = sel -> rebuild_controls!(fig, gl, scene, src, sel))
 
-    # Dinamikus alpha alrács (később tölthető forrásonkénti csúszkákkal)
+    # Dinamikus alpha alrész (később tölthető forrásonkénti csúszkákkal)
     alpha_lab = Label(fig, "Alphas")
     alpha_gl  = GridLayout()
     gl[3, 1]   = alpha_lab
     gl[3, 2:3] = alpha_gl
 
     sA = mk_slider!(fig, gl, 5, "alpha", 0.05:0.05:1.0; startvalue = src.alpha)
-    connect!(src.plot[:alpha], lift(Float32, sA.value))  # WHY: alpha élő vezérlése a GUI-ból
+    connect!(src.plot[:alpha], lift(Float32, sA.value))  # WHY: alpha célú vezérlése a GUI-ból
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 4, "▶"; onclick = btn -> begin
@@ -86,3 +86,4 @@ function setup_gui!(fig, scene, src, running=nothing)  # running: elhanyagolva, 
     end)
     return nothing
 end
+

@@ -7,18 +7,18 @@ using Observables  # Observable támogatás
 # Source: mozgás és megjelenítési adatok
 # TODO (arch/perf roadmap):
 # - Source karcsúsítása: positions, radii, plot → nézet/regiszter; color, alpha → handle-ről.
-# - act_p → p0; pozíció számítása: p(t) = p0 + RV*(t - bas_t) (ne frissítsük minden frame-ben).
+# - act_p ↔ p0; pozíció számítása: p(t) = p0 + RV*(t - bas_t) (ne frissítsük minden frame-ben).
 # - Több forrásnál: 1 instanced plot + attribútumtömbök (pos offset, radius, color, alpha).
 # - Csak akkor lépjünk, ha mérhető perf-korlát jelentkezik.
 mutable struct Source
     act_p::SVector{3, Float64}  # aktuális pozíció
     RV::SVector{3, Float64}     # sebesség vektor
     bas_t::Float64              # indulási idő
-    positions::Vector{Point3d}   # pozíciók (Point3d)  # később megfontolandó: Observable
+    positions::Vector{Point3d}  # pozíciók (Point3d)  # később megfontolandó: Observable
     radii::Observable{Vector{Float64}}       # sugarak (Float64)
     color::Symbol               # szín
     alpha::Float64              # áttetszőség
-    plot::Any                 # plot handle
+    plot::Any                   # plot handle
 end
 
 # add_source!: forrás hozzáadása és vizuális regisztráció
@@ -39,7 +39,7 @@ function add_source!(src::Source)
     return src
 end
 
-#TODO: később a GPU-n fusson (CUDA.jl)
+# TODO: később a GPU-n fusson (CUDA.jl)
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, density::Float64)    # meglévő puffer (argumentum)
     dt_rel = (tnow - bas_t)     # eltelt idő a bázistól
@@ -76,7 +76,7 @@ add_source!(src)
 include("gui.jl")
 setup_gui!(fig, scene, src)
 
-#TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
+# TODO: később egy függvény állítsa be zoom-ot és pozíciót a források és max_t alapján.
 display(fig)  # ablak megjelenítése
 zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
 #scale!(scene.scene, 0.8, 0.8, 0.8) # ez is csak display(fig) után működik.
@@ -121,3 +121,4 @@ function start_sim!(fig, scene, sources)
     end
     return sim_task[]
 end
+
