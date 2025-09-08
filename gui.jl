@@ -12,6 +12,96 @@ function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing)
     return menu
 end
 
+## --- Dynamic preset helpers ---
+function rebuild_alpha_controls!(fig, alpha_gl, sources)
+    try
+        empty!(alpha_gl)
+    catch
+    end
+    row = 1
+    colors = ["cyan","magenta","yellow","green","orange","red","blue"]
+    for (i, s) in enumerate(sources)
+        # color row (simple menu for now)
+        c_label = "color $(i)"
+        menu = mk_menu!(fig, alpha_gl, row, c_label, colors;
+                        onchange = sel -> begin
+                            c = Symbol(sel)
+                            try s.color = c catch end
+                            try s.plot[:color][] = c catch end
+                        end)
+        try
+            idx = findfirst(==(string(s.color)), colors)
+            if idx !== nothing
+                menu.i_selected[] = idx
+            end
+        catch
+        end
+        row += 1
+        # alpha row
+        a_label = "alpha $(i)"
+        sl = mk_slider!(fig, alpha_gl, row, a_label, 0.05:0.05:1.0; startvalue = s.alpha,
+                        onchange = v -> (s.alpha = v))
+        try
+            connect!(s.plot[:alpha], lift(Float32, sl.value))
+        catch
+        end
+        row += 1
+    end
+    return nothing
+end
+
+function on_preset_change(fig, gl, scene, src, preset::String, alpha_gl)
+    @info "preset_changed" preset
+    reset_to_preset!(fig, scene, preset, alpha_gl)
+    return nothing
+end
+
+function clear_scene_plots!(scene)
+    try
+        empty!(scene)
+    catch
+        try
+            empty!(scene.scene)
+        catch
+        end
+    end
+    return nothing
+end
+
+function build_sources_for_preset(preset::String)
+    srcs = Source[]
+    if preset == "Single"
+        push!(srcs, Source(SVector(0.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.2, nothing))
+    elseif preset == "Dual (2)"
+        push!(srcs, Source(SVector(-2.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :cyan, 0.2, nothing))
+        push!(srcs, Source(SVector( 2.0,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), :magenta, 0.2, nothing))
+    else
+        for i in 1:5
+            x = -4.0 + 2.0*(i-1)
+            col = (:cyan, :magenta, :yellow, :green, :orange)[i]
+            push!(srcs, Source(SVector(x,0.0,0.0), SVector(2.0,0.0,0.0), 0.0, Point3d[], Observable(Float64[]), col, 0.2, nothing))
+        end
+    end
+    return srcs
+end
+
+function reset_to_preset!(fig, scene, preset::String, alpha_gl)
+    try
+        paused[] = true
+    catch
+    end
+    clear_scene_plots!(scene)
+    try
+        empty!(sources)
+    catch
+    end
+    for s in build_sources_for_preset(preset)
+        add_source!(s)
+    end
+    rebuild_alpha_controls!(fig, alpha_gl, sources)
+    return nothing
+end
+
 # mk_slider!: label + slider + value label egy sorban
 function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, onchange=nothing)
     lab = Label(fig, label_txt)
@@ -56,16 +146,17 @@ function setup_gui!(fig, scene, src, running=nothing)  # running: elhanyagolva, 
 
     presets = ["Single", "Dual (2)", "Batch"]
     preset_menu = mk_menu!(fig, gl, 2, "Preset", presets;
-                           onchange = sel -> rebuild_controls!(fig, gl, scene, src, sel))
+                           onchange = sel -> on_preset_change(fig, gl, scene, src, sel, alpha_gl))
 
-    # Dinamikus alpha alrész (később tölthető forrásonkénti csúszkákkal)
-    alpha_lab = Label(fig, "Alphas")
+    # Dinamikus Sources panel (később bővíthető további paraméterekkel)
+    alpha_lab = Label(fig, "Sources")
     alpha_gl  = GridLayout()
     gl[3, 1]   = alpha_lab
     gl[3, 2:3] = alpha_gl
+    rebuild_alpha_controls!(fig, alpha_gl, sources)
 
-    sA = mk_slider!(fig, gl, 5, "alpha", 0.05:0.05:1.0; startvalue = src.alpha)
-    connect!(src.plot[:alpha], lift(Float32, sA.value))  # WHY: alpha célú vezérlése a GUI-ból
+    # sA = mk_slider!(fig, gl, 5, "alpha", 0.05:0.05:1.0; startvalue = src.alpha)
+    #connect!(src.plot[:alpha], lift(Float32, sA.value))  # WHY: alpha célú vezérlése a GUI-ból
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 4, "▶"; onclick = btn -> begin
@@ -86,4 +177,3 @@ function setup_gui!(fig, scene, src, running=nothing)  # running: elhanyagolva, 
     end)
     return nothing
 end
-
