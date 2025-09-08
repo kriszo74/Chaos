@@ -1,10 +1,10 @@
 # SZABÁLYOK:
-
 - Teljesítmény-első: minimalizált allokáció, előallokált pufferek, Observable-k újrafelhasználása; nincs felesleges ellenőrzés vagy védelem.
 - Egyszerűség: "The best part is no part"; a legkisebb működő megoldás előnyben, felesleges rétegek kerülése.
 - Kódstílus: magyar kommentek, angol azonosítók; logikai blokk előtt 1 soros magyarázat; trükkös részeknél célzott inline komment; ne kommenteljünk minden sort.
 - API stabilitás: nem követelmény; gyors, inkrementális változtatások rendben.
 - Kommunikáció: egy kérdés, egy válasz; minden módosítás előtt rövid egyeztetés és jóváhagyás.
+- Lépésméret: Kis, ellenőrizhető lépések (egy változtatás/fájl/konceptus); minden lépés végén rövid összegzés és megállok jóváhagyásra.
 - Git: közvetlen `main`; kb. 3–5 óránként beszédes commit (miért + mi változott). A commit üzeneteket én fogalmazom, push csak jóváhagyás után.
 - Tesztelés: egyelőre manuális; automata tesztek akkor kerülnek be, amikor a program bonyolultabb lesz.
 - Teljesítménymérés: akkor optimalizálunk, ha lassúnak érzed a programot.
@@ -12,11 +12,9 @@
 - Encoding: UTF-8; meglévő mojibake fokozatos javítása.
 - Verzió: Julia 1.10+.
 
-
 # PARANCSOK:
 
 - `i`: új feladat javaslatának kérése (írj annyit, hogy "i").
-
 
 # WORKFLOW:
 
@@ -28,12 +26,11 @@
 - Commit: beszédes üzenet (miért + mi változott), kb. 3–5 óránként; push `main`-re.
 - Iteráció: következő kis feladat kiválasztása.
 - Naplózás: a "FELADATOK" és "AKTUÁLIS FELADAT" szakaszokban vezetjük.
-
+- Aktuális feladat: amint elkezdünk egy feladattal foglalkozni, áthelyezzük az "AKTUÁLIS FELADAT" szakaszba; befejezéskor onnan töröljük.
 
 # AKTUÁLIS FELADAT:
 
 - Nincs kijelölt feladat. Írd: "i", ha új javaslatot kérsz.
-
 
 # JEGYZETEK:
 
@@ -60,11 +57,13 @@
 
 - Teljesítmény és architektúra
   - Instanced renderelés: egyetlen `meshscatter!` attribútumokkal (pozíció, sugár, szín, alfa) több forrásra.
-  - Pufferek: sugarak és pozíciók előallokálása; Observable-ök újrafelhasználása fölösleges új példányok nélkül.
+  - Pufferek: sugarak és pozíciók előallokálása; Observable‑ök újrafelhasználása felesleges új példányok nélkül.
   - Mozgásmodell: `Source` tisztítása (kezdeti `p0`, `RV`, `bas_t`), származtatott állapotok számítása futás közben.
-  - GPU-kísérlet: sugarak frissítésének portolása CUDA.jl-re, ha a CPU-s megoldás szűk keresztmetszet.
+  - GPU‑kísérlet: sugarak frissítésének portolása CUDA.jl‑re, ha a CPU‑s megoldás szűk keresztmetszet.
 
 - Kódminőség és karbantarthatóság
-  - Forrásfájlok kódolásának javítása (UTF-8), kommentek tisztítása.
+  - Forrásfájlok kódolása UTF‑8‑ra, kommentek tisztítása. [KÉSZ]
+  - .editorconfig felvétele (UTF‑8, CRLF, 4 szóköz; Markdownnál no‑trim). [KÉSZ]
+  - .gitattributes felvétele (text=auto; *.jl/*.md/*.txt CRLF; binárisok `binary`). [KÉSZ]
+  - Renormalizálás: `git add --renormalize .` + commit. [KÉSZ]
   - Rövid docstringek a főbb függvényekhez (`setup_scene`, `add_source!`, `update_radii`, `start_sim!`).
-

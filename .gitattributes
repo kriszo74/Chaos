@@ -1,0 +1,16 @@
+# Normalize text files and control line endings
+# Defaults: detect text automatically and normalize to LF in repo
+* text=auto
+
+# Windows working tree preference: CRLF for common text files
+*.jl  text eol=crlf
+*.md  text eol=crlf
+*.txt text eol=crlf
+
+# Binary assets (no EOL conversion)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
