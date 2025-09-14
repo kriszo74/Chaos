@@ -85,12 +85,12 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     if preset == "Dual (2)"
         sD = mk_slider!(fig, sources_gl, row += 1, "d (src2)", 0.1:0.1:10.0; startvalue = start_d)
         sT = mk_slider!(fig, sources_gl, row += 1, "θ (src2) [°]", 0:5:360; startvalue = round(Int, start_theta_deg))
-        on(sD.value) do v
-            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = v, start_theta_deg = sT.value[])
-        end
-        on(sT.value) do v
-            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = sD.value[], start_theta_deg = v)
-        end
+        # on(sD.value) do v
+        #     rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = v, start_theta_deg = sT.value[])
+        # end
+        # on(sT.value) do v
+        #     rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = sD.value[], start_theta_deg = v)
+        # end
     end
 end
 
