@@ -45,16 +45,25 @@ const PRESET_TABLE = Dict(
 
 const COLORS = ["cyan","magenta","yellow","green","orange","red","blue"]
 
-function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String)
+function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String; start_d::Float64=2.0, start_theta_deg::Float64=60.0)
     rt.paused[] = true  # WHY: rebuild közben álljunk meg
     empty!(scene)                          # WHY: teljes újraépítés
     foreach(delete!, contents(sources_gl))  # blokk eltávolítása
     trim!(sources_gl)                # üres sor/oszlop levágása
 
     empty!(world.sources)
-    for (x, col) in PRESET_TABLE[preset]  # WHY: preset kötelező; invalid kulcs hibát dob
-        add_source!(world, scene, Source(SVector(x,0.0,0.0), SVector(2.0,0.0,0.0), 0.0,
-                           Point3d[], Observable(Float64[]), col, 0.2, nothing))
+    if preset == "Dual (2)"
+        # Inicializálás analitikusan d,θ alapján (Π₀ síkban)
+        p1  = SVector(0.0, 0.0, 0.0)
+        RV1 = SVector(2.0, 0.0, 0.0)
+        p2  = p2_from_dθ(p1, RV1, start_d, start_theta_deg)
+        add_source!(world, scene, Source(p1, RV1, 0.0, Point3d[], Observable(Float64[]), :cyan,    0.2, nothing))
+        add_source!(world, scene, Source(p2, RV1, 0.0, Point3d[], Observable(Float64[]), :magenta, 0.2, nothing))
+    else
+        for (x, col) in PRESET_TABLE[preset]  # WHY: preset kötelező; invalid kulcs hibát dob
+            add_source!(world, scene, Source(SVector(x,0.0,0.0), SVector(2.0,0.0,0.0), 0.0,
+                               Point3d[], Observable(Float64[]), col, 0.2, nothing))
+        end
     end
 
     row = 0
@@ -74,8 +83,14 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     end
     # Dual (2) extra vezérlők: d és θ a 2. forráshoz
     if preset == "Dual (2)"
-        mk_slider!(fig, sources_gl, row += 1, "d (src2)", 0.1:0.1:10.0; startvalue = 2.0)
-        mk_slider!(fig, sources_gl, row += 1, "θ (src2) [°]", 0:5:360; startvalue = 60)
+        sD = mk_slider!(fig, sources_gl, row += 1, "d (src2)", 0.1:0.1:10.0; startvalue = start_d)
+        sT = mk_slider!(fig, sources_gl, row += 1, "θ (src2) [°]", 0:5:360; startvalue = round(Int, start_theta_deg))
+        on(sD.value) do v
+            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = v, start_theta_deg = sT.value[])
+        end
+        on(sT.value) do v
+            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, preset; start_d = sD.value[], start_theta_deg = v)
+        end
     end
 end
 
