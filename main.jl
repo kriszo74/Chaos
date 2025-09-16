@@ -26,7 +26,10 @@ include("3dtools.jl")
 fig, scene = setup_scene()
 
 include("gui.jl")
-setup_gui!(fig, scene, world, rt)
+#setup_gui!(fig, scene, world, rt)
+
+include("gtk_ui.jl")        # egyszer
+gtk_win = build_gtk_ui(world, rt)  # második ablak
 
 display(fig)  # ablak megjelenítése
 zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
