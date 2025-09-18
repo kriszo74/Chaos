@@ -1,6 +1,8 @@
+prompt (emlékeztető magamnak, ezt hagyd figyelmen kívül): Olvasd el rules_hu.md-t a github csatlakozón keresztül. További szabályok a WORKFLOW-ben leírtak szerint.
+
 WORKFLOW
 
-* Vásznak létrehozása: Töltsd be ezt a szabályzatot egy vászonra változatlanul. Ezután töltsd be az összes .jl file-t, változatlanul és hozz létre új code/\<fájlnév>.jl vásznat (egy fájl = egy vászon).
+* Töltsd be ezt a szabályzatot (rules_hu.md) egy vászonra változatlanul, utána rögtön main.jl-t és addig meg se állj, amíg az összes kódvászon létre nem jött (egy fájl = egy vászon).
 
 * Fő feladat meghatározása: ha minden vászon létrejött, akkor kérdezd meg, hogy mi a feladat.
 

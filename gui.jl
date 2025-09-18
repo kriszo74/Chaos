@@ -17,11 +17,15 @@ function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, o
     grid[row, 1] = Label(fig, label_txt)
     grid[row, 2] = s
     grid[row, 3] = val
-    isnothing(onchange) || on(s.value) do v; onchange(v); end
-    #isnothing(bind_to) || connect!(bind_to, s.value)  # egyik sem működik, fordítási hiba jön.
-    isnothing(bind_to) || connect!(s.value, bind_to)  # 
-
-    return s
+    isnothing(onchange) || on(s.value) do v; onchange(v); end    
+    if !isnothing(bind_to)
+        pl, attr = bind_to
+        on(s.value) do v
+            nt = NamedTuple{(attr,)}((Float32(v),))
+            update!(pl; nt...)
+        end
+    end
+return s
 end  
 
 # mk_button!: gomb + elhelyezés + opcionális onclick
@@ -81,7 +85,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         # alpha row
         sl = mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                         startvalue = s.alpha,
-                        onchange = v -> (s.alpha = v), bind_to = s.plot[:alpha])
+                        onchange = v -> (s.alpha = v), bind_to = (s.plot, :alpha))
     end
     # Dual (2) extra vezérlők: d és θ a 2. forráshoz
     if preset == "Dual (2)"
