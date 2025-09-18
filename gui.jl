@@ -18,7 +18,9 @@ function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, o
     grid[row, 2] = s
     grid[row, 3] = val
     isnothing(onchange) || on(s.value) do v; onchange(v); end
-    isnothing(bind_to) || connect!(bind_to, s.value)  # WHY: automatikus típuskonverzió elég
+    #isnothing(bind_to) || connect!(bind_to, s.value)  # egyik sem működik, fordítási hiba jön.
+    isnothing(bind_to) || connect!(s.value, bind_to)  # 
+
     return s
 end  
 
