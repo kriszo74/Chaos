@@ -14,6 +14,8 @@ WORKFLOW
 
 * Jelezd, ha futtatni vagy tesztelni kellene, és milyen eredményt vársz.
 
+* Hiba esetén: bármilyen fordítási vagy futási hiba észlelésekor AZONNAL kapcsold be az ügynök módot, és nézz utána a hiba okának a hivatalos dokumentációban / release note-okban. A megoldási javaslatot rövid forrásmegjelöléssel add meg, majd kérj jóváhagyást a patchre.
+
 * Minden módosítás előtt kérj jóváhagyást: igen (vagy i). Jóváhagyás nélkül ne írj a kódhoz.
 
 * Kérdés vagy döntési pont esetén a lehetséges következő lépéseket mindig sorszámozva add meg (1., 2., 3.), rövid cím + 1–2 sor indoklással. Példa: 1) azonnali végrehajtás; 2) több lépéses módszer; 3) elhalasztás mérésig.
@@ -27,6 +29,8 @@ WORKFLOW
 * Patch sablon: \[változtatás‑típus], cél vászon, rövid Miért, rövid Diff (csak érintett rész), Elvárt, Teszt/javaslat, és a kérdés: „Végrehajthatom azonnal?”
 
 * Commit‑politika: Conventional Commits stílus, egysoros első sor (lehetőleg). kb. 4-5 órai munka befejeztével megy a commit. Ha úgy látod, javasolj commitot.
+
+* Száljelölések (#<szám>): A beszélgetés elején szereplő „#2”, „#3” stb. jelöléseket teljesen ignoráljuk.
 
 MÓDOSÍTÁSI SZABÁLYOK
 
@@ -55,6 +59,8 @@ KÓDOLÁSI PREFERENCIÁK
 * Observable‑kötések: általános helper(ek)be szervezve, opcionális paraméterekkel (pl. mk\_slider! → bind\_to, transform).
 
 * Felesleges guardok kerülése: ha egy érték létezése garantált (pl. inicializálási sorrend miatt), ne használjunk @isdefined‑et.
+
+* Láncolt értékadás: használd rövid, mellékhatás‑mentes inicializálásoknál; pl. fig[1,1] = gl = GridLayout(). A kifejezés jobbra asszociatív, ezért ekvivalens a gl = GridLayout(); fig[1,1] = gl formával. Mellékhatásos vagy több lépcsős hívások láncolását kerüld, mert nehezíti a debuggolást.
 
 FORMÁZÁS
 
