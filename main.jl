@@ -9,8 +9,9 @@ const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 struct Runtime
     sim_task::Observable{Union{Nothing,Task}}
     paused::Observable{Bool}
+    t::Observable{Float64}
 end
-rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false))
+rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Observable(0.0))
 
 include("source.jl") # forrás‑logika
 mutable struct World # világállapot
@@ -48,6 +49,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             tprev = time_ns()/1e9
             step = world.E * dt
             t += step
+            rt.t[] = t
             if t > world.max_t
                 break
             end

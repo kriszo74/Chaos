@@ -51,6 +51,16 @@ function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, den
     return radii
 end
 
+# -- apply_time!: idő szerinti vizuális állapot alkalmazása (scrub/play)
+#   - Jelenleg csak a sugarakat frissíti a megadott t alapján.
+#   - Később bővíthető a pozíciók (src.positions) és/vagy act_p abszolút számításával.
+function apply_time!(world, t::Float64)
+    @inbounds for src in world.sources
+        src.radii[] = update_radii(src.radii[], src.bas_t, t, world.density)
+    end
+    return nothing
+end
+
 
 # d,θ → p2 a Π₀ síkban (RV1-re merőleges sík, p1-en át)
 # WHY: GUI‑független analitikus pozicionálás
