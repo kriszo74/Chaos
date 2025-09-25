@@ -213,9 +213,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                     startvalue = current_t[],
                     onchange = v -> begin
                         # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
-                        if sT_guard[]
-                            return
-                        end
+                        sT_guard[] && return
                         rt.paused[] = true
                         current_t[] = v
                         for src in world.sources
@@ -248,9 +246,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                                sT.range[] = 0.0:0.01:world.max_t
                            catch
                            end
-                           if current_t[] > world.max_t
-                               current_t[] = world.max_t
-                           end
+                           current_t[] = min(current_t[], world.max_t)
                            _apply_current_t!()
                        end)
 

@@ -44,9 +44,7 @@ function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, den
             radii[i] = dt_rel - (i-1)/density
         end
         N = length(radii)
-        if K < N
-            fill!(view(radii, K+1:N), 0.0)
-        end
+    K < N && fill!(view(radii, K+1:N), 0.0)
     end
     return radii
 end
@@ -61,28 +59,10 @@ function apply_time!(world, t::Float64)
     return nothing
 end
 
-
-# d,θ → p2 a Π₀ síkban (RV1-re merőleges sík, p1-en át)
-# WHY: GUI‑független analitikus pozicionálás
-function p2_from_dθ(p1::SVector{3,Float64}, RV1::SVector{3,Float64}, d::Float64, θ_deg::Float64)
-    @assert d >= 0 "d must be >= 0"
-    u = RV1 / sqrt(sum(abs2, RV1))                 # RV1 egységvektor
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
-    ref  = abs(sum(refz .* u)) > 0.97 ? refy : refz  # WHY: fallback ha ~párhuzamos
-    e2p  = ref - (sum(ref .* u)) * u                # vetítés Π₀ síkra
-    e2   = e2p / sqrt(sum(abs2, e2p))               # síkbeli 0° irány
-    e3   = SVector(u[2]*e2[3]-u[3]*e2[2],           # síkbeli ortho (u × e2)
-                   u[3]*e2[1]-u[1]*e2[3],
-                   u[1]*e2[2]-u[2]*e2[1])
-    θ    = θ_deg * (pi/180)
-    return p1 + d * (cos(θ) * e2 + sin(θ) * e3)
-end
-
-
 # -----------------------------------------------------------------------------
 # calculate_coordinates: világállapotból (world) olvassa ki a referencia-forrást
 # Viselkedés:
-#   - ref === nothing  → pos=(0,0,0), RV_vec=(RV,0,0)
+#   - isnothing(ref)  → pos=(0,0,0), RV_vec=(RV,0,0)
 #   - különben world.sources[ref] alapján yaw/pitch szerint számol
 # Megjegyzés: a függvény szándékosan nem annotál world típust, hogy elkerüljük a
 # körkörös függést (World a main.jl-ben van definiálva).
@@ -93,9 +73,7 @@ function calculate_coordinates(world,
                                distance::Float64,
                                yaw_deg::Float64,
                                pitch_deg::Float64)
-    if ref === nothing
-        return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
-    end
+    isnothing(ref) && return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
     @assert 1 ≤ ref ≤ length(world.sources) "ref out of range: $(ref)"
 
     ref_pos = world.sources[ref].act_p

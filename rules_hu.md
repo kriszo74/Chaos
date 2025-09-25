@@ -1,8 +1,8 @@
-prompt (emlékeztető magamnak, ezt hagyd figyelmen kívül): Olvasd el rules\_hu.md-t a github csatlakozón keresztül. További szabályok a WORKFLOW-ben leírtak szerint.
+prompt (emlékeztető magamnak, ezt hagyd figyelmen kívül): 1. Ügynök mód: Olvasd be rules_hu.md-t és az összes .jl file-t a github csatlakozón keresztül! 2. Vászon: Tedd ki őket külön-külön vászonra változtatás nélkül!
 
 1 WORKFLOW
 
-A) Töltsd be ezt a szabályzatot (rules\_hu.md) egy vászonra változatlanul, utána rögtön main.jl-t és addig meg se állj, amíg az összes kódvászon létre nem jött (egy fájl = egy vászon).
+A) Töltsd be ezt a szabályzatot (rules_hu.md) egy vászonra változatlanul, utána rögtön main.jl-t és addig meg se állj, amíg az összes kódvászon létre nem jött (egy fájl = egy vászon).
 
 B) Fő feladat meghatározása: ha minden vászon létrejött, akkor kérdezd meg, hogy mi a feladat.
 
