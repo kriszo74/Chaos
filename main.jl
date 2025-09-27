@@ -10,8 +10,9 @@ struct Runtime
     sim_task::Observable{Union{Nothing,Task}}
     paused::Observable{Bool}
     t::Observable{Float64}
+    pause_ev::Base.Event
 end
-rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Observable(0.0))
+rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Observable(0.0), Base.Event())
 
 include("source.jl") # forrás‑logika
 mutable struct World # világállapot
@@ -34,34 +35,27 @@ zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
 
 # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
 function start_sim!(fig, scene, world::World, rt::Runtime)
-    # Dupla-indítás védelem
-    if rt.sim_task[] !== nothing && !istaskdone(rt.sim_task[])
-        @info "start_sim!: already running, reusing existing task"
-        return rt.sim_task[]
-    end
-
     rt.sim_task[] = @async begin
-        t = 0.0
         target = 1/60
         dt = target
         while isopen(fig.scene)
-            if rt.paused[]; sleep(0.05); continue; end  # Pause alatt pihen
+            while rt.paused[]
+                wait(rt.pause_ev)
+            end  # Pause alatt blokkol
             tprev = time_ns()/1e9
             step = world.E * dt
-            t += step
-            rt.t[] = t
-            t > world.max_t && break
+            rt.t[] += step
+            rt.t[] > world.max_t && break
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
-                src.radii[] = update_radii(src.radii[], src.bas_t, t, world.density)
+                src.radii[] = update_radii(src.radii[], src.bas_t, rt.t[], world.density)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
             rem > 0 && sleep(rem)
-            @static if !DEBUG_MODE
-                dt = max(target, frame_used)
-            end
+            @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
+        rt.paused[] = true
     end
     return rt.sim_task[]
 end

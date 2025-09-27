@@ -14,23 +14,21 @@ function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected
 end
 
 # mk_slider!: label + slider + value label egy sorban
-function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, onchange=nothing, bind_to=nothing)
+function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, onchange::Union{Nothing,Function}=nothing, target=nothing, attr::Union{Nothing,Symbol}=nothing, transform = Float32)
     s   = Slider(fig, range=range, startvalue=startvalue)
-    val = Label(fig, lift(x -> string(round(x, digits=fmtdigits)), s.value); color = :white, halign = :right, tellwidth = false) 
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false) # 
     grid[row, 2] = s
-    grid[row, 3] = val
-    #colsize!(grid, 3, Fixed(20))  # slider/műszer oszlop
-    isnothing(onchange) || on(s.value) do v; onchange(v); end    
-    if !isnothing(bind_to)
-        pl, attr = bind_to
+    grid[row, 3] = Label(fig, lift(x -> string(round(x, digits=fmtdigits)), s.value);
+                         color = :white, halign = :right, tellwidth = false)
+    isnothing(onchange) || on(s.value) do v; onchange(v); end
+    if target !== nothing && attr !== nothing
         on(s.value) do v
-            nt = NamedTuple{(attr,)}((Float32(v),))
-            update!(pl; nt...)
+            nt = NamedTuple{(attr,)}((transform(v),))
+            update!(target; nt...)
         end
     end
-return s
-end  
+    return s
+end      
 
 # mk_button!: gomb + elhelyezés + opcionális onclick
 function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
@@ -109,7 +107,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                    startvalue = src.alpha,
                    onchange = v -> (src.alpha = v),
-                   bind_to = (src.plot, :alpha))
+                   target = src.plot, attr = :alpha)
 
         # RV (skálár) – egyelőre csak UI; live recompute = TODO
         mk_slider!(fig, sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
@@ -158,22 +156,13 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     # Aktuális preset és t állapot a GUI-ban
     presets = collect(PRESET_ORDER)
     current_preset = Ref(first(presets))
-    current_t = Ref(0.0)
-
     # Preset választó (fent tartjuk, mint eddig)
     preset_menu = mk_menu!(fig, gl, 2, "Preset", presets; selected_index = 1,
                            onchange = sel -> begin
                                current_preset[] = sel
                                rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel)
                                # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
-                               tval = current_t[]
-                               try
-                                   tval = rt.t[]
-                               catch
-                               end
-                               for src in world.sources
-                                   src.radii[] = update_radii(src.radii[], src.bas_t, tval, world.density)
-                               end
+                               apply_time!(world, rt.t[])
                            end)
 
     # Dinamikus Sources panel
@@ -183,57 +172,32 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
 
     rebuild_sources_panel!(fig, scene, sources_gl, world, rt, first(presets))
 
-    # helper: apply current t to radii (play/scrub kompatibilis)
-    local function _apply_current_t!()
-        tval = current_t[]
-        try
-            tval = rt.t[]
-        catch
-        end
-        for src in world.sources
-            src.radii[] = update_radii(src.radii[], src.bas_t, tval, world.density)
-        end
-    end
-
-    _apply_current_t!()
-
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
     sDensity = mk_slider!(fig, gl, 6, "density", 0.5:0.5:20.0;
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
                               rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
-                              _apply_current_t!()
+                              apply_time!(world, rt.t[])
                           end)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
-    # guard: különbség emberi vs. programozott slider-mozgatás között
-    sT_guard = Ref(false)
+    disable_sT_onchange = Ref(false) # guard: különbség emberi vs. programozott slider-mozgatás között
     sT = mk_slider!(fig, gl, 8, "t", 0.0:0.01:world.max_t;
-                    startvalue = current_t[],
+                    startvalue = rt.t[],
                     onchange = v -> begin
-                        # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
-                        sT_guard[] && return
+                        disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
                         rt.paused[] = true
-                        current_t[] = v
-                        for src in world.sources
-                            src.radii[] = update_radii(src.radii[], src.bas_t, v, world.density)
-                        end
+                        rt.t[] = v
+                        apply_time!(world, rt.t[])
                     end)
-
-    # ha a futó animáció frissíti rt.t-t, a slider is kövesse, de ne triggerelje az onchange-et
-    try
-        on(rt.t) do tv
-            sT_guard[] = true
-            # kerekítsük a 0.01-es lépésre, és tartsuk a tartományban
-            local v = round(tv, digits = 2)
-            v = clamp(v, first(sT.range[]), last(sT.range[]))
-            # A dokumentáció szerint programból a set_close_to! ajánlott a vizuális frissítéshez
-            set_close_to!(sT, v)
-            current_t[] = v
-            sT_guard[] = false
+    
+    on(rt.t) do tv
+        if !rt.paused[]
+            disable_sT_onchange[] = true # ha a futó animáció frissíti rt.t-t, a slider is kövesse, de ne triggerelje az onchange-et
+            set_close_to!(sT, tv)
+            disable_sT_onchange[] = false
         end
-    catch
     end
 
     sMaxT = mk_slider!(fig, gl, 7, "max_t", 1.0:0.5:60.0;
@@ -242,29 +206,28 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                            world.max_t = v
                            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
                            # Frissítsük a t csúszka tartományát és clampeljük az értékét
-                           try
-                               sT.range[] = 0.0:0.01:world.max_t
-                           catch
-                           end
-                           current_t[] = min(current_t[], world.max_t)
-                           _apply_current_t!()
+                           sT.range[] = 0.0:0.01:world.max_t
+                           rt.t[] = clamp(rt.t[], 0.0, world.max_t)
+                           apply_time!(world, rt.t[])
                        end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 5, "▶"; onclick = btn -> begin
-        if rt.sim_task[] === nothing || istaskdone(rt.sim_task[])
+        if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
             rt.sim_task[] = start_sim!(fig, scene, world, rt)
             rt.paused[] = false
-            @async begin
-                try
-                    wait(rt.sim_task[])
-                catch
-                end
-                btn.label[] = "▶"
-            end
         else
             rt.paused[] = !rt.paused[]
         end
-        btn.label[] = rt.paused[] ? "▶" : "❚❚"
     end)
+        
+    on(rt.paused) do p
+        if p
+            btnPlay.label[] = "▶"
+            Base.reset(rt.pause_ev)
+        else
+            btnPlay.label[] = "❚❚"
+            notify(rt.pause_ev)
+        end
+    end
 end
