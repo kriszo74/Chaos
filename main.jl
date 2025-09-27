@@ -1,4 +1,5 @@
 using GLMakie
+GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
 using StaticArrays
 using GeometryBasics
 using Observables  # Observable támogatás
@@ -30,21 +31,14 @@ fig, scene = setup_scene()
 include("gui.jl")
 setup_gui!(fig, scene, world, rt)
 
-display(fig)  # ablak megjelenítése
-zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
-
 # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
 function start_sim!(fig, scene, world::World, rt::Runtime)
     rt.sim_task[] = @async begin
-        target = 1/60
-        dt = target
+        dt = target = 1/60
         while isopen(fig.scene)
-            while rt.paused[]
-                wait(rt.pause_ev)
-            end  # Pause alatt blokkol
+            while rt.paused[]; wait(rt.pause_ev); end  # Pause alatt blokkol
             tprev = time_ns()/1e9
-            step = world.E * dt
-            rt.t[] += step
+            rt.t[] += step = world.E * dt
             rt.t[] > world.max_t && break
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
@@ -56,6 +50,11 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
         rt.paused[] = true
+        rt.t[] = 0.0
     end
     return rt.sim_task[]
 end
+
+screen = display(fig)  # ablak megjelenítése (screen visszaadva)
+zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
+isinteractive() || wait(screen) # F5 (nem interaktív) futásnál blokkoljunk az ablak bezárásáig
