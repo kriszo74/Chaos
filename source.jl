@@ -36,8 +36,8 @@ function add_source!(world, scene, src::Source)
 end
 
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
-function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, density::Float64)
-    dt_rel = (tnow - bas_t)
+function update_radii(radii::Vector{Float64}, bas_t::Float64, t::Float64, density::Float64)
+    dt_rel = (t - bas_t)
     K = ceil(Int, dt_rel * density)
     @inbounds begin
         for i in 1:K
@@ -50,13 +50,12 @@ function update_radii(radii::Vector{Float64}, bas_t::Float64, tnow::Float64, den
 end
 
 # -- apply_time!: idő szerinti vizuális állapot alkalmazása (scrub/play)
-#   - Jelenleg csak a sugarakat frissíti a megadott t alapján.
+#   - Jelenleg csak a sugarakat frissíti a aktuális world.t alapján.
 #   - Később bővíthető a pozíciók (src.positions) és/vagy act_p abszolút számításával.
-function apply_time!(world, t::Float64)
+function apply_time!(world)
     @inbounds for src in world.sources
-        src.radii[] = update_radii(src.radii[], src.bas_t, t, world.density)
+        src.radii[] = update_radii(src.radii[], src.bas_t, world.t[], world.density)
     end
-    return nothing
 end
 
 # -----------------------------------------------------------------------------

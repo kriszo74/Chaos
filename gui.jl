@@ -5,9 +5,8 @@ using Makie: set_close_to!, Outside
 
 # mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
-    menu = Menu(fig, options = options)
-    grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false) # 
-    grid[row, 2:3] = menu
+    grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
+    grid[row, 2:3] = menu = Menu(fig, options = options)
     isnothing(selected_index) || (menu.i_selected[] = selected_index::Int)
     isnothing(onchange) || on(menu.selection) do sel; onchange(sel); end
     return menu
@@ -32,8 +31,7 @@ end
 
 # mk_button!: gomb + elhelyezés + opcionális onclick
 function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
-    btn = Button(fig, label = label)
-    grid[row, 1:colspan] = btn
+    grid[row, 1:colspan] = btn = Button(fig, label = label)
     isnothing(onclick) || on(btn.clicks) do _; onclick(btn); end
     return btn
 end
@@ -79,7 +77,7 @@ const PRESET_TABLE = Dict(
 
 const COLORS = ["cyan","magenta","yellow","green","orange","red","blue"]
 
-function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String; start_d::Float64=2.0, start_theta_deg::Float64=60.0)
+function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String)
     rt.paused[] = true  # WHY: rebuild közben álljunk meg
     empty!(scene)                          # WHY: teljes újraépítés
     foreach(delete!, contents(sources_gl))  # blokk eltávolítása
@@ -162,7 +160,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                                current_preset[] = sel
                                rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel)
                                # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
-                               apply_time!(world, rt.t[])
+                               apply_time!(world)
                            end)
 
     # Dinamikus Sources panel
@@ -178,21 +176,21 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                           onchange = v -> begin
                               world.density = v
                               rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
-                              apply_time!(world, rt.t[])
+                              apply_time!(world)
                           end)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
     disable_sT_onchange = Ref(false) # guard: különbség emberi vs. programozott slider-mozgatás között
     sT = mk_slider!(fig, gl, 8, "t", 0.0:0.01:world.max_t;
-                    startvalue = rt.t[],
+                    startvalue = world.t[],
                     onchange = v -> begin
                         disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
                         rt.paused[] = true
-                        rt.t[] = v
-                        apply_time!(world, rt.t[])
+                        world.t[] = v
+                        apply_time!(world)
                     end)
     
-    on(rt.t) do tv
+    on(world.t) do tv
         if !rt.paused[]
             disable_sT_onchange[] = true # ha a futó animáció frissíti rt.t-t, a slider is kövesse, de ne triggerelje az onchange-et
             set_close_to!(sT, tv)
@@ -207,8 +205,8 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                            rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
                            # Frissítsük a t csúszka tartományát és clampeljük az értékét
                            sT.range[] = 0.0:0.01:world.max_t
-                           rt.t[] = clamp(rt.t[], 0.0, world.max_t)
-                           apply_time!(world, rt.t[])
+                           world.t[] = clamp(world.t[], 0.0, world.max_t)
+                           apply_time!(world)
                        end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
