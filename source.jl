@@ -19,11 +19,10 @@ end
 # NOTE: a 'world' típusát szándékosan nem annotáljuk itt, hogy elkerüljük a körkörös
 # függést (World a main.jl-ben van definiálva). Fail-fast hibák híváskor látszanak.
 function add_source!(world, scene, src::Source)
-    N = Int(ceil((world.max_t - src.bas_t) * world.density))  # pozíciók/sugarak előkészítése
-    p_base = src.act_p + src.RV * src.bas_t                   # első impulzus pozíciója
-    dp     = src.RV / world.density                           # két impulzus közti eltolás
-    src.positions = [Point3d((p_base + dp * k)...) for k in 0:N-1]
-    src.radii[] = fill(0.0, N)
+    N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
+    src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
+    src.positions = [Point3d(src.act_p...)]                    # horgony: első pont a kiinduló pozíció
+    src.positions = update_positions(N, src, world)            # kezdeti pozíciósor generálása aktuális RV-vel
     push!(world.sources, src)
     ph = meshscatter!(scene, src.positions;
         marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0),
@@ -49,34 +48,40 @@ function update_radii(radii::Vector{Float64}, bas_t::Float64, t::Float64, densit
     return radii
 end
 
-# -- apply_time!: idő szerinti vizuális állapot alkalmazása (scrub/play)
-#   - Jelenleg csak a sugarakat frissíti a aktuális world.t alapján.
-#   - Később bővíthető a pozíciók (src.positions) és/vagy act_p abszolút számításával.
+# Pozíciók újragenerálása adott N alapján
+function update_positions(N::Int, src::Source, world)
+    dp = src.RV / world.density            # két impulzus közti eltolás
+    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]
+end
+
+# Idő szerinti vizuális állapot alkalmazása (scrub/play)
+# Csak a sugarakat frissíti a world.t alapján. Később bővíthető a pozíciókra is.
 function apply_time!(world)
     @inbounds for src in world.sources
         src.radii[] = update_radii(src.radii[], src.bas_t, world.t[], world.density)
     end
 end
 
-# -----------------------------------------------------------------------------
-# calculate_coordinates: világállapotból (world) olvassa ki a referencia-forrást
-# Viselkedés:
-#   - isnothing(ref)  → pos=(0,0,0), RV_vec=(RV,0,0)
-#   - különben world.sources[ref] alapján yaw/pitch szerint számol
-# Megjegyzés: a függvény szándékosan nem annotál world típust, hogy elkerüljük a
-# körkörös függést (World a main.jl-ben van definiálva).
-# -----------------------------------------------------------------------------
+# RV skálár frissítése + positions újragenerálása (irány megtartása)
+# Paraméterek: RV (nagyság), src (forrás), world (világállapot)
+function update_source_RV(RV::Float64, src::Source, world)
+    # irány megtartása: pitch=90°, distance=0, yaw=0 → dir == u
+    _, src.RV = calculate_coordinates(world, src, RV, 0.0, 0.0, 90.0)
+    src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
+end
+
+# Koordináták számítása referenciaként adott src alapján
+# - src == nothing → pos=(0,0,0), RV_vec=(RV,0,0)
+# - különben a src aktuális akt_p/RV értékeihez képest yaw/pitch szerint számol
 function calculate_coordinates(world,
-                               ref::Union{Nothing,Int},
+                               src::Source,
                                RV::Float64,
                                distance::Float64,
                                yaw_deg::Float64,
                                pitch_deg::Float64)
-    isnothing(ref) && return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
-    @assert 1 ≤ ref ≤ length(world.sources) "ref out of range: $(ref)"
-
-    ref_pos = world.sources[ref].act_p
-    ref_RV  = world.sources[ref].RV
+    isnothing(src) && return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
+    ref_pos = src.act_p
+    ref_RV  = src.RV
 
     # u: ref_RV irány egységvektor
     u = ref_RV / sqrt(sum(abs2, ref_RV))

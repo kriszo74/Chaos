@@ -77,9 +77,11 @@ const PRESET_TABLE = Dict(
 
 const COLORS = ["cyan","magenta","yellow","green","orange","red","blue"]
 
+# 
+# Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String)
-    rt.paused[] = true  # WHY: rebuild közben álljunk meg
-    empty!(scene)                          # WHY: teljes újraépítés
+    rt.paused[] = true  # rebuild közben álljunk meg
+    empty!(scene)                          # teljes újraépítés
     foreach(delete!, contents(sources_gl))  # blokk eltávolítása
     trim!(sources_gl)                      # üres sor/oszlop levágása
 
@@ -88,7 +90,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
-        pos, RV_vec = calculate_coordinates(world, spec.ref, spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
+        pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), spec.color, 0.2, nothing)
         add_source!(world, scene, src)
 
@@ -107,11 +109,10 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                    onchange = v -> (src.alpha = v),
                    target = src.plot, attr = :alpha)
 
-        # RV (skálár) – egyelőre csak UI; live recompute = TODO
+        # RV (skálár) – LIVE recompute
         mk_slider!(fig, sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
-                   onchange = _ -> nothing)  # TODO: live újraszámítás calculate_coordinates-szal
-
+                   onchange = v -> update_source_RV(v, world.sources[i], world))
         # RR (skalár, c-hez mérhető) – egyelőre csak UI
         mk_slider!(fig, sources_gl, row += 1, "RR $(i)", -5.0:0.1:5.0;
                    startvalue = spec.RR,
@@ -136,6 +137,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
 end
 
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
+# GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
 function setup_gui!(fig, scene, world::World, rt::Runtime)
     fig[1, 1] = gl = GridLayout() # Setting panel
     gl.alignmode = Outside(10) # külső padding
@@ -229,3 +231,5 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 end
+
+
