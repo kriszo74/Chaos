@@ -1,14 +1,108 @@
 # ---- 3dtools.jl ----
 
+# Színkezeléshez használjuk a Colors csomagot (Makie függősége)
+using Colors
+using Makie, GLMakie
+using GeometryBasics: Point3f, GLTriangleFace, Sphere
 # Gömbfelület generálása egyetlen hívással (GeometryBasics helper)
 # center  – a gömb közepe
 # radius  – sugár
 # res     – θ és φ irányú felbontás (≥ 3)
-function create_detailed_sphere(center::Point3f, radius::Float32, res::Int = 48)
-    sp     = Sphere(center, radius)               # beépített primitív
-    verts  = GeometryBasics.coordinates(sp, res)  # res×res pont
-    idxs   = GeometryBasics.faces(sp, res)        # indexlista
-    return GeometryBasics.Mesh(verts, idxs)
+function create_detailed_sphere(center::Point3f, r::Float32, res::Int=48)
+    @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
+    # Hosszúsági–szélességi rács UV-val és normállal (instancing‑kompatibilis markerhez)
+    nlats = res
+    nlons = 2res
+    verts  = Point3f[]
+    uvs    = Vec2f[]
+    faces  = GLTriangleFace[]
+    for i in 0:nlats
+        φ = π * (i/nlats)              # 0..π
+        z = cos(φ); s = sin(φ)
+        for j in 0:nlons
+            θ = 2π * (j/nlons)         # 0..2π
+            x = s*cos(θ); y = s*sin(θ)
+            p = center + r * Vec3f(x, y, z)
+            push!(verts, Point3f(p))
+            # UV: u∈[0,1], v∈[0,1] (v=1 a „északi” pólus felé)
+            u = Float32(j/nlons)
+            v = Float32(1 - i/nlats)
+            push!(uvs, Vec2f(u, v))
+        end
+    end
+    # Háromszögarcok
+    W = nlons + 1
+    for i in 1:nlats, j in 1:nlons
+        a = (i-1)*W + j
+        b = a + 1
+        c = a + W
+        d = c + 1
+        push!(faces, GLTriangleFace(a, c, b))
+        push!(faces, GLTriangleFace(b, c, d))
+    end
+    # Normálok: sugárirány
+    normals = Vec3f[((Vec3f(v) - Vec3f(center)) / r) for v in verts]
+    return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
+end
+
+# ÚJ: lat–long alapú unit-gömb geometriája (verts, faces, normals)
+function build_unit_sphere(res::Int=48)
+    sp    = Sphere(Point3f(0,0,0), 1f0)
+    verts = GeometryBasics.coordinates(sp, res)           # Vector{Point3f}
+    faces = GeometryBasics.faces(sp, res)                 # Faces (triangles)
+    # unit gömbnél a normál a középpontból kifelé mutat
+    norms = map(verts) do v
+        n = Vec3f(v)
+        invlen = 1f0 / sqrt(n[1]^2 + n[2]^2 + n[3]^2)
+        Vec3f(n[1]*invlen, n[2]*invlen, n[3]*invlen)
+    end
+    return (verts, faces, norms)
+end
+
+# ÚJ: RR colormap helyőrző (egyelőre egyszínű – cyan)
+# RR colormap – egyelőre a wrapper nem használja, de itt készítjük elő a kétoldali skálát
+# Megjegyzés: jelenleg a render még egyszínű; később a shader ezt fogja használni.
+
+# Hue-eltolás + (enyhe) deszaturálás HSV-ben
+@inline function _hsv_shift_rgba(c::RGBAf, Δh_deg::Float32, sat_scale::Float32)
+    rgb = RGB(c.r, c.g, c.b)
+    hsv = HSV(rgb)
+    h   = mod(hsv.h + Δh_deg/360f0, 1f0)
+    s   = clamp(hsv.s * sat_scale, 0f0, 1f0)
+    v   = hsv.v
+    rgb2 = RGB(HSV(h, s, v))
+    return RGBAf(Float32(rgb2.r), Float32(rgb2.g), Float32(rgb2.b), alpha(c))
+end
+
+"""
+make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int=256)
+  Kétoldali (−→+) gradienst készít egy alapszínből úgy, hogy a közép kissé
+  deszaturált, a szélek visszanyerik a telítettséget.
+"""
+function make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int=256)
+    n ≤ 2 && return [base, base]
+    out = Vector{RGBAf}(undef, n)
+    for i in 1:n
+        t = (2f0 * (i-1) / (n-1)) - 1f0            # t ∈ [-1, 1]
+        Δh = Float32(t) * h_max_deg                # fokban
+        sat_scale = 1f0 - desat_mid * (1f0 - abs(t)) # középen kisebb S, széleken 1.0
+        out[i] = _hsv_shift_rgba(base, Δh, sat_scale)
+    end
+    return out
+end
+
+const RR_COLORMAP = make_rr_colormap(RGBAf(0, 1, 1, 1); h_max_deg=120f0, desat_mid=0.15f0, n=256)
+
+# RR colormap → 1D textúra (N×1), hogy a v (latitude) mentén mintázható legyen
+@inline function rr_texture_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256)
+    cmap = rr_colormap_for(base_color; h_max_deg=Float32(h_max_deg), desat_mid=Float32(desat_mid), n=n)
+    return reshape(cmap, n, 1)  # Matrix{RGBAf} (N×1)
+end
+
+# Alapszín → RR colormap helper (instancing‑kompatibilis, későbbi shaderhez is jó)
+@inline function rr_colormap_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256)
+    base_rgba = RGBAf(Makie.to_color(base_color))
+    return make_rr_colormap(base_rgba; h_max_deg=Float32(h_max_deg), desat_mid=Float32(desat_mid), n=n)
 end
 
 # -----------------------------------------------------------------------------
@@ -23,4 +117,48 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
             upvector     = Vec3f(0,  1, 0))
     return fig, scene
 end
+# -----------------------------------------------------------------------------
+# RR instancing wrapper – jelenleg pass-through meshscatter!, később shaderrel bővítjük
+# -----------------------------------------------------------------------------
+struct RRParams
+    omega_dir::Vec3f      # forgástengely iránya (unit)
+    RR_scalar::Float32    # RR skála (előjeles)
+    c_ref::Float32        # referencia-sebesség
+    beta_max::Float32     # clamp a stabilitáshoz
+    h_max_deg::Float32    # hue-eltolás maximum (°)
+    desat_mid::Float32    # közép deszaturálás mértéke [0..1]
+end
 
+RRParams(; omega_dir=Vec3f(1,0,0), RR_scalar=0f0, c_ref=1f0,
+           beta_max=0.7f0, h_max_deg=120f0, desat_mid=0.15f0) =
+    RRParams(omega_dir, RR_scalar, c_ref, beta_max, h_max_deg, desat_mid)
+
+"""
+rr_spheres!(scene; positions, radii, base_color=:cyan, alpha=0.2, rr=RRParams(), res=48)
+
+Instancing-barát wrapper a jelenlegi meshscatter! fölé. Jelen állapotban csak
+átadja a hívást (egyszínű), de a későbbiekben shaderrel Doppler-félgömbös
+színezést valósítunk meg *változatlan* hívói API mellett.
+"""
+# --- Overload: rr_spheres! fogadjon Observable radii-t is ---
+function rr_spheres!(scene; positions, radii, base_color=:cyan, alpha=0.2, rr::RRParams=RRParams(), res::Int=48)
+    @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
+    local ph = meshscatter!(scene, positions;
+        marker       = create_detailed_sphere(Point3f(0, 0, 0), 1f0, res),
+        markersize   = radii,          # Vector vagy Observable is lehet
+        color        = base_color,     # ideiglenes, azonnal felülírjuk textúrával
+        transparency = true,
+        alpha        = alpha)
+    # (Opcionális) Orientáció: a marker helyi z‑t az RR‑tengelyhez igazítjuk
+    try
+        # Megjegyzés: a rotation típus backendenként eltérő (pl. Quaternion / Euler / vektor)
+        ph[:rotation][] = rr.omega_dir
+    catch
+    end
+    # RR‑textúra a v (latitude) mentén – a shader a mesh UV‑t fogja mintázni
+    try
+        ph[:color][] = rr_texture_for(base_color; h_max_deg=rr.h_max_deg, desat_mid=rr.desat_mid, n=256)
+    catch
+    end
+    return ph
+end

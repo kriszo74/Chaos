@@ -24,12 +24,15 @@ function add_source!(world, scene, src::Source)
     src.positions = [Point3d(src.act_p...)]                    # horgony: első pont a kiinduló pozíció
     src.positions = update_positions(N, src, world)            # kezdeti pozíciósor generálása aktuális RV-vel
     push!(world.sources, src)
-    ph = meshscatter!(scene, src.positions;
-        marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0),
-        markersize = src.radii,
-        color = src.color,
-        transparency = true,
-        alpha = src.alpha)
+    # Instancing: rr_spheres! wrapper (egyelőre egyszínű, később shaderes Doppler)
+    rv = src.RV; len = sqrt(sum(abs2, rv))
+    omega_dir = len > 0 ? Makie.Vec3f(Float32(rv[1]/len), Float32(rv[2]/len), Float32(rv[3]/len)) : Makie.Vec3f(1,0,0)
+    ph = rr_spheres!(scene;
+        positions   = src.positions,
+        radii       = src.radii,
+        base_color  = src.color,
+        alpha       = src.alpha,
+        rr          = RRParams(omega_dir=omega_dir, RR_scalar=Float32(src.RR)))
     src.plot = ph
     return src
 end
@@ -74,7 +77,7 @@ end
 # - src == nothing → pos=(0,0,0), RV_vec=(RV,0,0)
 # - különben a src aktuális akt_p/RV értékeihez képest yaw/pitch szerint számol
 function calculate_coordinates(world,
-                               src::Source,
+                               src::Union{Nothing,Source},
                                RV::Float64,
                                distance::Float64,
                                yaw_deg::Float64,
@@ -105,3 +108,4 @@ function calculate_coordinates(world,
     RV_vec = RV * dir
     return pos, RV_vec
 end
+
