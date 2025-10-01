@@ -1,68 +1,86 @@
 # ---- 3dtools.jl ----
 
 # Színkezeléshez használjuk a Colors csomagot (Makie függősége)
+# %% START ID=IMPORTS_3DTOOLS, v3
 using Colors
 using Makie, GLMakie
 using GeometryBasics: Point3f, GLTriangleFace, Sphere
+using LinearAlgebra: norm, normalize, dot, cross, I
+# %% END ID=IMPORTS_3DTOOLS
+
+# %% START ID=CREATE_DETAILED_SPHERE, v3
 # Gömbfelület generálása egyetlen hívással (GeometryBasics helper)
 # center  – a gömb közepe
 # radius  – sugár
 # res     – θ és φ irányú felbontás (≥ 3)
 function create_detailed_sphere(center::Point3f, r::Float32, res::Int=48)
     @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
-    # Hosszúsági–szélességi rács UV-val és normállal (instancing‑kompatibilis markerhez)
+    # Lat–long rács: előallokáció + előre számolt sincos → kevesebb allokáció, gyorsabb
     nlats = res
-    nlons = 2res
-    verts  = Point3f[]
-    uvs    = Vec2f[]
-    faces  = GLTriangleFace[]
-    for i in 0:nlats
-        φ = π * (i/nlats)              # 0..π
-        z = cos(φ); s = sin(φ)
-        for j in 0:nlons
-            θ = 2π * (j/nlons)         # 0..2π
-            x = s*cos(θ); y = s*sin(θ)
-            p = center + r * Vec3f(x, y, z)
-            push!(verts, Point3f(p))
-            # UV: u∈[0,1], v∈[0,1] (v=1 a „északi” pólus felé)
+    nlons = 2*res
+    W     = nlons + 1
+    Nv    = (nlats + 1) * W              # vertex/uv/normal darabszám
+    Nt    = 2 * nlats * nlons            # háromszög darabszám
+
+    verts  = Vector{Point3f}(undef, Nv)
+    uvs    = Vector{Vec2f}(undef, Nv)
+    faces  = Vector{GLTriangleFace}(undef, Nt)
+
+    # φ ∈ [0, π], θ ∈ [0, 2π]
+    φ = collect(range(0f0, stop=Float32(pi),       length=nlats+1))
+    θ = collect(range(0f0, stop=2f0*Float32(pi),   length=nlons+1))
+
+    sφ = similar(φ); cφ = similar(φ)
+    sθ = similar(θ); cθ = similar(θ)
+
+    @inbounds @simd for i in eachindex(φ)
+        sφ[i], cφ[i] = sincos(φ[i])
+    end
+    @inbounds @simd for j in eachindex(θ)
+        sθ[j], cθ[j] = sincos(θ[j])
+    end
+
+    # Vertex + UV táblázat feltöltése indexeléssel (push! nélkül)
+    @inbounds for i in 0:nlats
+        z = cφ[i+1]; s = sφ[i+1]
+        v = Float32(1 - i/nlats)
+        rowoff = i * W
+        @simd for j in 0:nlons
+            x = s * cθ[j+1]; y = s * sθ[j+1]
             u = Float32(j/nlons)
-            v = Float32(1 - i/nlats)
-            push!(uvs, Vec2f(u, v))
+            idx = rowoff + j + 1
+            verts[idx] = Point3f(center .+ r .* Vec3f(x, y, z))
+            uvs[idx]   = Vec2f(u, v)
         end
     end
+
     # Háromszögarcok
-    W = nlons + 1
-    for i in 1:nlats, j in 1:nlons
+    k = 0
+    @inbounds for i in 1:nlats, j in 1:nlons
         a = (i-1)*W + j
         b = a + 1
         c = a + W
         d = c + 1
-        push!(faces, GLTriangleFace(a, c, b))
-        push!(faces, GLTriangleFace(b, c, d))
+        k += 1; faces[k] = GLTriangleFace(a, c, b)
+        k += 1; faces[k] = GLTriangleFace(b, c, d)
     end
-    # Normálok: sugárirány
-    normals = Vec3f[((Vec3f(v) - Vec3f(center)) / r) for v in verts]
+
+    # Normálok: sugárirány (v - center)/r
+    normals = Vector{Vec3f}(undef, Nv)
+    @inbounds @simd for idx in 1:Nv
+        v = Vec3f(verts[idx]) - Vec3f(center)
+        normals[idx] = v / r
+    end
+
     return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
 end
-
-# ÚJ: lat–long alapú unit-gömb geometriája (verts, faces, normals)
-function build_unit_sphere(res::Int=48)
-    sp    = Sphere(Point3f(0,0,0), 1f0)
-    verts = GeometryBasics.coordinates(sp, res)           # Vector{Point3f}
-    faces = GeometryBasics.faces(sp, res)                 # Faces (triangles)
-    # unit gömbnél a normál a középpontból kifelé mutat
-    norms = map(verts) do v
-        n = Vec3f(v)
-        invlen = 1f0 / sqrt(n[1]^2 + n[2]^2 + n[3]^2)
-        Vec3f(n[1]*invlen, n[2]*invlen, n[3]*invlen)
-    end
-    return (verts, faces, norms)
-end
+# %% END ID=CREATE_DETAILED_SPHERE
 
 # ÚJ: RR colormap helyőrző (egyelőre egyszínű – cyan)
 # RR colormap – egyelőre a wrapper nem használja, de itt készítjük elő a kétoldali skálát
 # Megjegyzés: jelenleg a render még egyszínű; később a shader ezt fogja használni.
 
+# %% START ID=HSV_SHIFT_RGBA, v1
 # Hue-eltolás + (enyhe) deszaturálás HSV-ben
 @inline function _hsv_shift_rgba(c::RGBAf, Δh_deg::Float32, sat_scale::Float32)
     rgb = RGB(c.r, c.g, c.b)
@@ -73,7 +91,9 @@ end
     rgb2 = RGB(HSV(h, s, v))
     return RGBAf(Float32(rgb2.r), Float32(rgb2.g), Float32(rgb2.b), alpha(c))
 end
+# %% END ID=HSV_SHIFT_RGBA
 
+# %% START ID=MAKE_RR_COLORMAP, v1
 """
 make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int=256)
   Kétoldali (−→+) gradienst készít egy alapszínből úgy, hogy a közép kissé
@@ -90,52 +110,112 @@ function make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int
     end
     return out
 end
+# %% END ID=MAKE_RR_COLORMAP
 
+# %% START ID=RR_COLORMAP_CONST, v1
 const RR_COLORMAP = make_rr_colormap(RGBAf(0, 1, 1, 1); h_max_deg=120f0, desat_mid=0.15f0, n=256)
+# %% END ID=RR_COLORMAP_CONST; h_max_deg=120f0, desat_mid=0.15f0, n=256)
 
+# %% START ID=MAKE_BIPOLAR_COLORMAP, v2
 # RR colormap → 1D textúra (N×1), hogy a v (latitude) mentén mintázható legyen
 # Kétpólusú (neg/poz) fix paletta építése – pl. classic vörös/kék
-function make_bipolar_colormap(pos::RGBAf, neg::RGBAf; n::Int=256, desat_mid::Float32=0.15f0)
+# Lágy, "knee"-es átmenet a közép körül smoothstep-pel (mid_width szabályozza)
+@inline function _smoothstep(a::Float32, b::Float32, x::Float32)
+    t = clamp((x - a) / (b - a), 0f0, 1f0)
+    return t * t * (3f0 - 2f0 * t)
+end
+
+function make_bipolar_colormap(pos::RGBAf, neg::RGBAf; n::Int=256,
+                               desat_mid::Float32=0.15f0, mid_width::Float32=0.12f0)
     n ≤ 2 && return [neg, pos]
-    mid = RGBAf(
-        Float32((pos.r + neg.r)/2),
-        Float32((pos.g + neg.g)/2),
-        Float32((pos.b + neg.b)/2),
-        Float32((alpha(pos) + alpha(neg))/2)
-    )
-    # közép enyhe deszaturálása HSV-ben
-    mid = _hsv_shift_rgba(mid, 0f0, 1f0 - desat_mid)
-    left  = range(neg, stop=mid, length=div(n,2))
-    right = range(mid, stop=pos, length=n - length(left))
-    return [left...; right...]
+    mw = clamp(mid_width, 1f-4, 1f0)
+    out = Vector{RGBAf}(undef, n)
+    @inbounds for i in 1:n
+        # t ∈ [-1, 1] – negatív pólus → pozitív pólus
+        t = Float32((2*(i-1)/(n-1)) - 1)
+        # neg→pos keverési arány (0..1) lágy átmenettel a középen (|t|≤mw)
+        s = _smoothstep(-mw, mw, t)
+        r = (1f0 - s)*neg.r + s*pos.r
+        g = (1f0 - s)*neg.g + s*pos.g
+        b = (1f0 - s)*neg.b + s*pos.b
+        a = (1f0 - s)*alpha(neg) + s*alpha(pos)
+        base = RGBAf(Float32(r), Float32(g), Float32(b), Float32(a))
+        # közép felé deszaturálás (leginkább t≈0-nál)
+        sat_scale = 1f0 - desat_mid * (1f0 - abs(t))
+        out[i] = _hsv_shift_rgba(base, 0f0, sat_scale)
+    end
+    return out
+end
+# %% END ID=MAKE_BIPOLAR_COLORMAP
+
+# %% START ID=MAKE_LAT_BWR_COLORMAP, v1
+# Szélesség‑alapú kék→fehér→vörös gradiens: v=1 (északi pólus) = kék, v=0 (déli) = vörös, v≈0.5 (egyenlítő) = fehér/szürke
+@inline function _lerp_rgba(a::RGBAf, b::RGBAf, t::Float32)
+    t = clamp(t, 0f0, 1f0)
+    return RGBAf(Float32((1-t)*a.r + t*b.r),
+                 Float32((1-t)*a.g + t*b.g),
+                 Float32((1-t)*a.b + t*b.b),
+                 Float32((1-t)*alpha(a) + t*alpha(b)))
 end
 
-@inline function rr_texture_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256, rr_scalar=0f0, beta_max=0.7f0,
-                                 palette::Symbol=:classic, pos_color=:blue, neg_color=:red)
-    # RR arány szerinti skála: |RR|/beta_max ∈ [0,1]
-    s = clamp(abs(rr_scalar) / max(beta_max, eps(Float32)), 0f0, 1f0)
-    cmap = if palette === :classic
-        make_bipolar_colormap(RGBAf(Makie.to_color(pos_color)), RGBAf(Makie.to_color(neg_color)); n=n, desat_mid=Float32(desat_mid))
+function make_lat_bwr_colormap(n::Int; blue::RGBAf=RGBAf(0,0,1,1), red::RGBAf=RGBAf(1,0,0,1),
+                               mid_luma::Float32=0.92f0, mid_width::Float32=0.12f0)
+    n ≤ 2 && return reshape([red, blue], 2, 1)
+    mid = RGBAf(mid_luma, mid_luma, mid_luma, 1f0)
+    mw  = clamp(mid_width, 1f-4, 0.49f0)  # legfeljebb fél sáv
+    out = Vector{RGBAf}(undef, n)
+    @inbounds for i in 1:n
+        v = Float32((i-1)/(n-1))  # 0..1  (0 = déli, 1 = északi)
+        if v < 0.5f0
+            # déli félteke: vörös→fehér felé
+            t = _smoothstep(0.5f0-mw, 0.5f0, v)
+            out[i] = _lerp_rgba(red, mid, t)
+        else
+            # északi félteke: fehér→kék felé
+            t = _smoothstep(0.5f0, 0.5f0+mw, v)
+            out[i] = _lerp_rgba(mid, blue, t)
+        end
+    end
+    return reshape(out, n, 1)
+end
+# %% END ID=MAKE_LAT_BWR_COLORMAP
+
+# %% START ID=RR_TEXTURE_FOR, v3
+@inline function rr_texture_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256,
+                                 rr_scalar=0f0, beta_max=0.7f0, mid_width=0.12f0,
+                                 palette::Symbol=:classic, pos_color=:blue, neg_color=:red,
+                                 mid_luma::Float32=0.92f0)
+    # ÚJ: klasszikus = szélességi alapú kék→fehér→vörös gradienst ad vissza (északi→déli)
+    if palette === :classic
+        blue = RGBAf(Makie.to_color(pos_color))  # itt pos_color = :blue az alap
+        red  = RGBAf(Makie.to_color(neg_color))  # itt neg_color = :red az alap
+        cm   = make_lat_bwr_colormap(n; blue=blue, red=red, mid_luma=mid_luma, mid_width=Float32(mid_width))
+        return cm
     else
-        rr_colormap_for(base_color; h_max_deg=Float32(h_max_deg * s), desat_mid=Float32(desat_mid), n=n)
+        # régi RR‑alapú (hue‑shift) fallback
+        s = clamp(abs(rr_scalar) / max(beta_max, eps(Float32)), 0f0, 1f0)
+        cmap = rr_colormap_for(base_color; h_max_deg=Float32(h_max_deg * s), desat_mid=Float32(desat_mid), n=n)
+        if rr_scalar < 0f0
+            cmap = reverse(cmap)
+        end
+        return reshape(cmap, n, 1)
     end
-    # Előjel: RR<0 esetén a két pólus felcserélése (kolormap megfordítása)
-    if rr_scalar < 0f0
-        cmap = reverse(cmap)
-    end
-    return reshape(cmap, n, 1)  # Matrix{RGBAf} (N×1)
 end
+# %% END ID=RR_TEXTURE_FOR
 
+# %% START ID=RR_COLORMAP_FOR, v1
 # Alapszín → RR colormap helper (instancing‑kompatibilis, későbbi shaderhez is jó)
 @inline function rr_colormap_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256)
     base_rgba = RGBAf(Makie.to_color(base_color))
     return make_rr_colormap(base_rgba; h_max_deg=Float32(h_max_deg), desat_mid=Float32(desat_mid), n=n)
 end
+# %% END ID=RR_COLORMAP_FOR
 
+# %% START ID=SETUP_SCENE, v1
 # -----------------------------------------------------------------------------
 # Jelenet (Scene) létrehozása háttérszínnel – mindig LScene, ortografikus kamera
 # -----------------------------------------------------------------------------
-function setup_scene(; backgroundcolor = RGBf(1.0, 1.0, 1.0)) #backgroundcolor = RGBf(0.302, 0.322, 0.471)
+function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
     fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)
     scene = LScene(fig[1, 1], show_axis = false)
     cam3d!(scene; projectiontype = :orthographic,
@@ -144,6 +224,9 @@ function setup_scene(; backgroundcolor = RGBf(1.0, 1.0, 1.0)) #backgroundcolor =
             upvector     = Vec3f(0,  1, 0))
     return fig, scene
 end
+# %% END ID=SETUP_SCENE
+
+# %% START ID=RRPARAMS_STRUCT, v1
 # -----------------------------------------------------------------------------
 # RR instancing wrapper – jelenleg pass-through meshscatter!, később shaderrel bővítjük
 # -----------------------------------------------------------------------------
@@ -155,140 +238,68 @@ struct RRParams
     h_max_deg::Float32    # hue-eltolás maximum (°)
     desat_mid::Float32    # közép deszaturálás mértéke [0..1]
 end
+# %% END ID=RRPARAMS_STRUCT
 
+# %% START ID=RRPARAMS_CTOR, v2
 RRParams(; omega_dir=Vec3f(1,0,0), RR_scalar=0f0, c_ref=1f0,
            beta_max=0.7f0, h_max_deg=120f0, desat_mid=0.15f0) =
     RRParams(omega_dir, RR_scalar, c_ref, beta_max, h_max_deg, desat_mid)
+# %% END ID=RRPARAMS_CTOR
 
-"""
-rr_spheres!(scene; positions, radii, base_color=:cyan, alpha=0.2, rr=RRParams(), res=48)
-
-Instancing-barát wrapper a jelenlegi meshscatter! fölé. Jelen állapotban csak
-átadja a hívást (egyszínű), de a későbbiekben shaderrel Doppler-félgömbös
-színezést valósítunk meg *változatlan* hívói API mellett.
-"""
-# --- Overload: rr_spheres! fogadjon Observable radii-t is ---
-function rr_spheres!(scene; positions, radii, base_color=:cyan, alpha=0.2, rr::RRParams=RRParams(), res::Int=48,
-                        
-                        use_rr_texture::Bool=true, use_rr_shader::Bool=false, rr_palette::Symbol=:classic)  # IDEIGLENES textúra; shader hamarosan átveszi
-    @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
-    local ph = meshscatter!(scene, positions;
-        marker       = create_detailed_sphere(Point3f(0, 0, 0), 1f0, res),
-        markersize   = radii,          # Vector vagy Observable is lehet
-        color        = base_color,     # ideiglenes, azonnal felülírjuk textúrával
-        transparency = true,
-        alpha        = alpha)
-    # (Opcionális) Orientáció: a marker helyi z‑t az RR‑tengelyhez igazítjuk
-    try
-        # Megjegyzés: a rotation típus backendenként eltérő (pl. Quaternion / Euler / vektor)
-        ph[:rotation][] = rr.omega_dir
-    catch
-    end
-    # RR‑textúra a v (latitude) mentén – a shader a mesh UV‑t fogja mintázni
-    if use_rr_texture  # IDEIGLENES: shader nélkül a colormap-ot textúraként kötjük a mesh UV-hoz
-        try
-            ph[:color][] = rr_texture_for(base_color; h_max_deg=rr.h_max_deg, desat_mid=rr.desat_mid, n=256,
-                                          rr_scalar=rr.RR_scalar, beta_max=rr.beta_max,
-                                          palette=rr_palette)
-            try
-                ph[:interpolate][] = true
-            catch
-            end
-        catch
-        end
-    end
-        # Shaderes út bekapcsolása (még kísérleti – biztonságos fallback a textúra)
-    if use_rr_shader
-        try
-            enable_rr_shader!(ph; base_color, rr)
-            # ha shader megy, a textúra-réteget kikapcsolhatjuk (majd a shader számol mindent)
-        catch err
-            @warn "enable_rr_shader! failed – fallback to texture" err
-        end
-    end
-    return ph
-end
-
+# %% START ID=EQUATOR_FACING_AXIS, v1
 # -----------------------------------------------------------------------------
-# KÍSÉRLETI: RR shader felvezetése – uniformok + fragment kiegészítés
-# Megjegyzés: GLMakie v0.13.x alatt a modify_shader! API elérhető, de backend-függő.
-# Itt egy biztonságos váz: ha bárhol hibázik, csendben visszaadjuk a textúrás utat.
+# Az egyenlítő láthatóságát biztosító tengely választása
+#  • V a nézőirány (unit), W az eredeti forgástengely.
+#  • A visszaadott tengely A mindig ⟂ V, és lehetőleg W komponensét követi.
 # -----------------------------------------------------------------------------
-function enable_rr_shader!(ph; base_color=:cyan, rr::RRParams=RRParams())
-    # Uniformok felkötése a plotra (Makie attrként)
-    try
-        ph[:rr_omega_dir][] = rr.omega_dir
-        ph[:rr_scalar][]    = rr.RR_scalar
-        ph[:rr_beta_max][]  = rr.beta_max
-        ph[:rr_c_ref][]     = rr.c_ref
-        ph[:rr_hmax][]      = rr.h_max_deg * (π/180f0)
-        ph[:rr_desat][]     = rr.desat_mid
-        ph[:rr_base_rgb][]  = Vec3f(RGB(to_color(base_color))...)  # alap RGB (0..1)
-    catch
-        # ha az attribútumok nem támogatottak, lépjünk vissza
-        return false
+function equator_facing_axis(W::Vec3f, V::Vec3f)
+    vhat = V / max(norm(V), eps(Float32))
+    what = W / max(norm(W), eps(Float32))
+    proj = what - dot(what, vhat) * vhat           # W vetülete a V-re merőleges síkban
+    nrm  = norm(proj)
+    if nrm < 1f-6
+        # W ~ || V: válasszunk stabil, merőleges irányt
+        tmp  = abs(dot(what, Vec3f(0,1,0))) < 0.99f0 ? Vec3f(0,1,0) : Vec3f(1,0,0)
+        proj = normalize(cross(what, tmp))
+    else
+        proj /= nrm
     end
+    return proj
+end
+# %% END ID=EQUATOR_FACING_AXIS
 
-    # Shader módosítás – csak GLMakie alatt értelmezett
-    try
-        GLMakie.modify_shader!(ph, fragment = rr_fragment_shader())
-    catch
-        return false
+# %% START ID=RR_VERTEX_COLORS, v3
+# -----------------------------------------------------------------------------
+# Per-vertex RR-színezés – egyszerű félgömb (kamera-független, equator-orientált)
+#  • Az oldalt a (A·N) előjele dönti el, ahol A a választott tengely (ált. equator_facing_axis).
+#  • Az erősség |RR|/beta_max (γ-görbítve) távolít a középszíntől.
+# -----------------------------------------------------------------------------
+function rr_vertex_colors(marker_mesh::GeometryBasics.Mesh, rr::RRParams; gamma::Float32=0.8f0,
+                          pos_color=:blue, neg_color=:red, axis_override::Union{Nothing,Vec3f}=nothing,
+                          force_w::Union{Nothing,Float32}=nothing)
+    normals = marker_mesh.normal
+    @assert length(normals) > 0 "Marker mesh has no normals"
+    A = isnothing(axis_override) ? rr.omega_dir : (axis_override::Vec3f)
+    A = A / max(norm(A), eps(Float32))
+    # Erősség: |RR| skálázás (gamma görbével) VAGY fix demo érték
+    mag = clamp(abs(rr.RR_scalar) / max(rr.beta_max, 1f-6), 0f0, 1f0)
+    w0  = mag^gamma  # 0..1
+    w   = isnothing(force_w) ? w0 : clamp(force_w::Float32, 0f0, 1f0)
+    # Kétpólusú paletta (klasszikus: kék/piros), közép enyhén deszaturálva
+    pos = RGBAf(Makie.to_color(pos_color))
+    neg = RGBAf(Makie.to_color(neg_color))
+    mid = _hsv_shift_rgba(RGBAf((pos.r+neg.r)/2, (pos.g+neg.g)/2, (pos.b+neg.b)/2, 1f0), 0f0, 1f0 - rr.desat_mid)
+    cols = Vector{RGBAf}(undef, length(normals))
+    @inbounds for i in eachindex(normals)
+        N = Vec3f(normals[i])
+        # FONTOS: az oldal meghatározása NE függjön az RR előjelétől (különben RR=0 → minden ugyanaz)
+        side_sign = sign(dot(A, N))  # +1: „északi”→pos, −1: „déli”→neg
+        side_col = side_sign ≥ 0f0 ? pos : neg
+        r = (1f0 - w)*mid.r + w*side_col.r
+        g = (1f0 - w)*mid.g + w*side_col.g
+        b = (1f0 - w)*mid.b + w*side_col.b
+        cols[i] = RGBAf(Float32(r), Float32(g), Float32(b), 1f0)
     end
-    return true
+    return cols
 end
-
-# Fragment-shader váz: β számítás (tangenciális komponens) + hue‑eltolás előkészítés.
-# Jelenleg csak felvezetés; a végső színt még a Makie pipeline adja vissza.
-function rr_fragment_shader()
-    return raw"""
-        vec3 rr_apply_hsv(vec3 rgb, float dh, float desat){
-            // nagyon egyszerű HSV konverzió a shaderben (helyi, közelítő)
-            float cmax = max(max(rgb.r, rgb.g), rgb.b);
-            float cmin = min(min(rgb.r, rgb.g), rgb.b);
-            float delta = cmax - cmin;
-            float h = 0.0;
-            if (delta > 1e-6){
-                if (cmax == rgb.r)      h = mod((rgb.g - rgb.b)/delta, 6.0);
-                else if (cmax == rgb.g) h = (rgb.b - rgb.r)/delta + 2.0;
-                else                    h = (rgb.r - rgb.g)/delta + 4.0;
-                h /= 6.0;
-            }
-            float s = (cmax <= 1e-6) ? 0.0 : (delta / cmax);
-            float v = cmax;
-            // hue eltolás radián helyett [0,1] körön
-            h = fract(h + dh/(2.0*3.14159265));
-            s = clamp(s * (1.0 - desat), 0.0, 1.0);
-            // vissza RGB-be (HSV → RGB)
-            float c = v * s;
-            float x = c * (1.0 - abs(mod(h*6.0, 2.0) - 1.0));
-            float m = v - c;
-            vec3 rp;
-            if (0.0 <= h && h < 1.0/6.0)      rp = vec3(c, x, 0);
-            else if (1.0/6.0 <= h && h < 2.0/6.0) rp = vec3(x, c, 0);
-            else if (2.0/6.0 <= h && h < 3.0/6.0) rp = vec3(0, c, x);
-            else if (3.0/6.0 <= h && h < 4.0/6.0) rp = vec3(0, x, c);
-            else if (4.0/6.0 <= h && h < 5.0/6.0) rp = vec3(x, 0, c);
-            else                                  rp = vec3(c, 0, x);
-            return rp + vec3(m);
-        }
-
-        void rr_fragment_main(inout vec4 color){
-            // inputok: normál (N), nézőirány (V), omega_dir (W)
-            vec3 N = normalize(@normal);
-            vec3 W = normalize(@rr_omega_dir);
-            // ortografikus kamera: V ~ (0,0,-1)
-            vec3 V = vec3(0.0, 0.0, -1.0);
-            // tangenciális irány és LOS komponens
-            vec3 vt = normalize(cross(W, N));
-            float beta = dot(vt, V) * @rr_scalar / max(@rr_c_ref, 1e-6);
-            beta = clamp(beta, -@rr_beta_max, @rr_beta_max);
-            // hue eltolás mértéke
-            float dh = beta * @rr_hmax;   // radiánban
-            float des = @rr_desat * (1.0 - abs(beta)/@rr_beta_max);
-            vec3 base = @rr_base_rgb;
-            vec3 col  = rr_apply_hsv(base, dh, des);
-            color.rgb = col;
-        }
-    """
-end
+# %% END ID=RR_VERTEX_COLORS

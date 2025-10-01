@@ -1,17 +1,25 @@
 # ---- gui.jl ----
 
 # Namespace tisztítás a Makie prefixek csökkentésére
+# %% START ID=GUI_IMPORTS, v1
+
 using Makie: set_close_to!, Outside
 
+# %% END ID=GUI_IMPORTS
+
+# %% START ID=GUI_HELPER_MK_MENU, v1
 # mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
     grid[row, 2:3] = menu = Menu(fig, options = options)
     isnothing(selected_index) || (menu.i_selected[] = selected_index::Int)
     isnothing(onchange) || on(menu.selection) do sel; onchange(sel); end
+
     return menu
 end
+# %% END ID=GUI_HELPER_MK_MENU
 
+# %% START ID=GUI_HELPER_MK_SLIDER, v1
 # mk_slider!: label + slider + value label egy sorban
 function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, onchange::Union{Nothing,Function}=nothing, target=nothing, attr::Union{Nothing,Symbol}=nothing, transform = Float32)
     s   = Slider(fig, range=range, startvalue=startvalue)
@@ -20,6 +28,7 @@ function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, o
     grid[row, 3] = Label(fig, lift(x -> string(round(x, digits=fmtdigits)), s.value);
                          color = :white, halign = :right, tellwidth = false)
     isnothing(onchange) || on(s.value) do v; onchange(v); end
+
     if target !== nothing && attr !== nothing
         on(s.value) do v
             nt = NamedTuple{(attr,)}((transform(v),))
@@ -27,14 +36,20 @@ function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, o
         end
     end
     return s
-end      
+end
+# %% END ID=GUI_HELPER_MK_SLIDER
 
+# %% START ID=GUI_HELPER_MK_BUTTON, v1
 # mk_button!: gomb + elhelyezés + opcionális onclick
 function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
     grid[row, 1:colspan] = btn = Button(fig, label = label)
     isnothing(onclick) || on(btn.clicks) do _; onclick(btn); end
+
     return btn
 end
+# %% END ID=GUI_HELPER_MK_BUTTON
+
+# %% START ID=GUI_CONSTS, v1
 
 ## --- Dynamic preset helpers ---
 
@@ -48,6 +63,8 @@ const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
 const REF_NONE = 0
 const ref_choice = Ref(Int[])
 
+# %% END ID=GUI_CONSTS
+
 # adatvezérelt preset-tábla a forrásokhoz (pozíció, szín)
 # PRESET specifikáció mezők – jelenleg csak betöltjük őket, a viselkedés változatlan (NFC)
 #  color::Symbol          – megjelenítési szín
@@ -58,6 +75,8 @@ const ref_choice = Ref(Int[])
 #  yaw_deg::Float64       – azimut [°] a ref RV tengelyéhez viszonyítva
 #  pitch_deg::Float64     – eleváció [°] a Π₀ síkjától felfelé (+) / lefelé (−)
 # TODO: PRESET_TABLE külső fájlból (pl. presets.toml/presets.json) legyen beolvasva; ez csak átmeneti definíció.
+# %% START ID=GUI_PRESET_TABLE, v1
+
 const PRESET_TABLE = Dict(
     "Single" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0, pitch_deg=0.0),
@@ -75,14 +94,22 @@ const PRESET_TABLE = Dict(
     ],
 )
 
+# %% END ID=GUI_PRESET_TABLE
+
+# %% START ID=GUI_COLORS, v1
+
 const COLORS = ["cyan","magenta","yellow","green","orange","red","blue"]
 
+# %% END ID=GUI_COLORS
+
 # 
+# %% START ID=GUI_REBUILD_SOURCES_PANEL, v1
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String)
     rt.paused[] = true  # rebuild közben álljunk meg
     empty!(scene)                          # teljes újraépítés
-    foreach(delete!, contents(sources_gl))  # blokk eltávolítása
+    foreach(delete!, contents(sources_gl))  
+# blokk eltávolítása
     trim!(sources_gl)                      # üres sor/oszlop levágása
 
     empty!(world.sources)
@@ -102,8 +129,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                      src.color = c
                      src.plot[:color][] = c
                  end)
-
-        # alpha row (ALWAYS)
+    # alpha row (ALWAYS)
         mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                    startvalue = src.alpha,
                    onchange = v -> (src.alpha = v),
@@ -135,9 +161,13 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     colsize!(sources_gl, 2, Relative(0.5))
     colsize!(sources_gl, 3, Relative(0.15))
 end
+# %% END ID=GUI_REBUILD_SOURCES_PANEL
+
+# %% START ID=GUI_SETUP, v1
 
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
 # GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
+
 function setup_gui!(fig, scene, world::World, rt::Runtime)
     fig[1, 1] = gl = GridLayout() # Setting panel
     gl.alignmode = Outside(10) # külső padding
@@ -231,5 +261,6 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 end
+# %% END ID=GUI_SETUP
 
 
