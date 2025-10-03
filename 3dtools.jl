@@ -13,7 +13,7 @@ using LinearAlgebra: norm, normalize, dot, cross, I
 # center  – a gömb közepe
 # radius  – sugár
 # res     – θ és φ irányú felbontás (≥ 3)
-function create_detailed_sphere(center::Point3f, r::Float32, res::Int=48)
+function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
     @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
     # Lat–long rács: előallokáció + előre számolt sincos → kevesebb allokáció, gyorsabb
     nlats = res
@@ -75,59 +75,6 @@ function create_detailed_sphere(center::Point3f, r::Float32, res::Int=48)
     return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
 end
 # %% END ID=CREATE_DETAILED_SPHERE
-
-# Back-compat: UV-s gömb wrapper (azonos a fenti függvénnyel)
-# %% START ID=CREATE_DETAILED_SPHERE_UV, v1
-# Gömb UV-vel (lat-long): u∈[0,1] hosszúság, v∈[0,1] szélesség (0 = északi pólus)
-# function create_detailed_sphere_uv(center::Point3f, radius::Float32, res::Int = 48)
-#     @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
-#     # Vertexek és háromszög-arcok a beépített Sphere-ből (felbontással)
-#     verts = GeometryBasics.coordinates(Sphere(center, radius), res)
-#     faces = GeometryBasics.faces(Sphere(center, radius), res)
-
-#     # UV-k (lat-long): u = atan(y,x) leképezése [0,1]-re; v = pólárszög/π
-#     uvs = Vector{Vec2f}(undef, length(verts))
-#     @inbounds for (i, p) in enumerate(verts)
-#         px = Float32(p[1] - center[1]); py = Float32(p[2] - center[2]); pz = Float32(p[3] - center[3])
-#         invlen = inv(sqrt(px*px + py*py + pz*pz))
-#         x = px*invlen; y = py*invlen; z = pz*invlen
-#         u = Float32((atan(y, x) + π) / (2π))      # 0..1
-#         φ = acos(clamp(z, -1f0, 1f0))             # 0..π
-#         v = Float32(φ / π)                        # 0..1  (0: északi pólus, 1: déli)
-#         uvs[i] = Vec2f(u, v)
-#     end
-
-#     # Normálok: sugárirány (v - center)/radius
-#     normals = Vector{Vec3f}(undef, length(verts))
-#     @inbounds @simd for i in eachindex(verts)
-#         diff = Vec3f(verts[i]) - Vec3f(center)
-#         normals[i] = diff / radius
-#     end
-
-#     return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
-# end
-# %% END ID=CREATE_DETAILED_SPHERE_UV
-# + v_shift: mennyit toljuk el a v-koordinátát (fel/le), alapértelme 0
-function create_detailed_sphere(center::Point3f, radius::Float32, res::Int = 48; v_shift::Float32 = 0f0)
-    sp    = Sphere(center, radius)
-    verts = GeometryBasics.coordinates(sp, res)
-    idxs  = GeometryBasics.faces(sp, res)
-
-    uvs = Vector{Point2f}(undef, length(verts))
-    @inbounds for (i, v) in enumerate(verts)
-        px = Float32(v[1] - center[1]); py = Float32(v[2] - center[2]); pz = Float32(v[3] - center[3])
-        invlen = inv(sqrt(px*px + py*py + pz*pz))
-        x = px*invlen; y = py*invlen; z = pz*invlen
-        u = (atan(y, x) + π) / (2π)                 # 0..1
-        φ = acos(clamp(z, -1f0, 1f0))               # 0..π
-        # vcoord = clamp(φ/π + v_shift, 0f0, 1f0)    # jelenlegi – TELÍT
-        vcoord = Float32(φ/π)
-        uvs[i] = Point2f(u, vcoord)
-    end
-
-    normals = map(p -> (Vec3f(p) - Vec3f(center)) / radius, verts)
-    return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), idxs)
-end
 
 # ÚJ: RR colormap helyőrző (egyelőre egyszínű – cyan)
 # RR colormap – egyelőre a wrapper nem használja, de itt készítjük elő a kétoldali skálát

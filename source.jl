@@ -40,41 +40,24 @@ function add_source!(world, scene, src::Source)
     axis = equator_facing_axis(rr.omega_dir, V)
 
     # Marker: lat‑long gömb UV‑val
-    marker_mesh = create_detailed_sphere(Point3f(0, 0, 0), 1f0; v_shift = -0.12f0)
+    marker_mesh = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0)
 
 
-    # Textúra: szélességi alapú kék→fehér→vörös (északi→egyenlítő→déli)
-    tex = rr_texture_for(:cyan;
-        palette   = :classic,
-        pos_color = :blue,
-        neg_color = :red,
-        n         = 512,
-        rr_scalar = rr.beta_max * 0.99f0, # fix, közel max hatás
-        beta_max  = rr.beta_max,
-        h_max_deg = rr.h_max_deg,
-        desat_mid = rr.desat_mid)
+    # Egyszerű 1×N textúra (jelenleg végleges)
+tex = reshape([RGBAf(1,0,0,1), RGBAf(0.5,0.5,0.5,1), RGBAf(0,0,1,1)], 3, 1)
 
-    # DIAG: 1×4 teszt textúra (felül→alul: piros, zöld, kék, fehér)
-    tex_debug = reshape([RGBAf(1,0,0,1), RGBAf(0.5,0.5,0.5,1), RGBAf(0,0,1,1)], 3, 1)
     # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
     ph = meshscatter!(scene, src.positions;
-        marker        = marker_mesh,
-        markersize    = src.radii,
-        color         = tex_debug,   # DIAG            # << textúra (Matrix{RGBAf})
-        #uv_transform  = :flip_y,        # <<< ettől Észak felül = kék, Dél alul = vörös
-         rotation      = Vec3f(0.0,pi/4, 0.0),  # (x, y, z) rad
-        transparency  = false,       # DIAG: háttérkeverés kikapcsolva
-        alpha         = 1.0,         # DIAG: teljes fedés
-        interpolate   = false,       # DIAG: sávok élesen
-        shading       = false)          # <<< egységes szín a szélességi körök mentén
-        
-        # Eredeti hívás
-        # ph = meshscatter!(scene, src.positions;
-        # marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0),
-        # markersize = src.radii,
-        # color = src.color,
-        # transparency = true,
-        # alpha = src.alpha)
+        marker       = marker_mesh,             # UV-s gömb marker
+        markersize   = src.radii,              # példányonkénti sugárvektor
+        color        = tex,                    # textúra (Matrix{RGBAf})
+        # uv_transform = :flip_y,              # (új) opcionális Y-tükör
+        rotation     = Vec3f(0.0, pi/4, 0.0),  # (új)) radián (x, y, z) TODO: mesh módosítása, hogy ne kelljen alaprotáció.
+        transparency = true,                   # átlátszóság engedélyezve
+        alpha        = src.alpha,              # átlátszóság mértéke
+        interpolate  = true,                   # (új) textúrainterpoláció bekapcsolva
+        shading      = true)                   # (új) fény-árnyék aktív
+
     src.plot = ph
     return src
 end
