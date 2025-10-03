@@ -21,29 +21,6 @@ end
 # add_source!: forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
 # NOTE: a 'world' típust itt sem annotáljuk (körkörös függés elkerülése – World a main.jl-ben).
 # Lépések: sugarpuffer és pozíciósor előkészítése → forrás regisztrálása → UV-s marker + 1×N RR‑textúra → instancing.
-#= function add_source!(world, scene, src::Source)
-    N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
-    src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
-    src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció
-    src.positions = update_positions(N, src, world)          # kezdeti pozíciósor generálása aktuális RV-vel
-    push!(world.sources, src)
-    # RR orientáció (egység irányvektor az RV-ből)
-    rv = src.RV
-    len = sqrt(sum(abs2, rv))
-    omega_dir = len > 0 ? Makie.Vec3f(Float32(rv[1]/len), Float32(rv[2]/len), Float32(rv[3]/len)) : Makie.Vec3f(1,0,0)
-    # UV-s marker + 1×N RR textúra (latitude BWR)
-    marker = create_detailed_sphere(Point3f(0,0,0), 1f0, 48)
-    tex    = rr_texture_for(src.color; rr_scalar=Float32(src.RR))
-    ph = meshscatter!(scene, src.positions;
-        marker       = marker,
-        markersize   = src.radii,
-        color        = tex,           # TEXTÚRA
-        uv_transform = :flip_y,       # latitude-textúra helyes állása
-        transparency = true,
-        alpha        = src.alpha)
-    src.plot = ph
-    return src
-end =#
 function add_source!(world, scene, src::Source)
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
@@ -63,7 +40,8 @@ function add_source!(world, scene, src::Source)
     axis = equator_facing_axis(rr.omega_dir, V)
 
     # Marker: lat‑long gömb UV‑val
-    marker_mesh = create_detailed_sphere(Point3f(0, 0, 0), 1f0)
+    marker_mesh = create_detailed_sphere(Point3f(0, 0, 0), 1f0; v_shift = -0.12f0)
+
 
     # Textúra: szélességi alapú kék→fehér→vörös (északi→egyenlítő→déli)
     tex = rr_texture_for(:cyan;
@@ -76,17 +54,27 @@ function add_source!(world, scene, src::Source)
         h_max_deg = rr.h_max_deg,
         desat_mid = rr.desat_mid)
 
+    # DIAG: 1×4 teszt textúra (felül→alul: piros, zöld, kék, fehér)
+    tex_debug = reshape([RGBAf(1,0,0,1), RGBAf(0.5,0.5,0.5,1), RGBAf(0,0,1,1)], 3, 1)
     # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
     ph = meshscatter!(scene, src.positions;
         marker        = marker_mesh,
         markersize    = src.radii,
-        color         = tex,            # << textúra (Matrix{RGBAf})
-        uv_transform  = :flip_y,        # <<< ettől Észak felül = kék, Dél alul = vörös
-        rotation      = axis,           # z‑tengely az equator‑orientált irányba
-        transparency  = true,
-        alpha         = src.alpha,
-        interpolate   = true,
+        color         = tex_debug,   # DIAG            # << textúra (Matrix{RGBAf})
+        #uv_transform  = :flip_y,        # <<< ettől Észak felül = kék, Dél alul = vörös
+         rotation      = Vec3f(0.0,pi/4, 0.0),  # (x, y, z) rad
+        transparency  = false,       # DIAG: háttérkeverés kikapcsolva
+        alpha         = 1.0,         # DIAG: teljes fedés
+        interpolate   = false,       # DIAG: sávok élesen
         shading       = false)          # <<< egységes szín a szélességi körök mentén
+        
+        # Eredeti hívás
+        # ph = meshscatter!(scene, src.positions;
+        # marker = create_detailed_sphere(Point3f(0, 0, 0), 1f0),
+        # markersize = src.radii,
+        # color = src.color,
+        # transparency = true,
+        # alpha = src.alpha)
     src.plot = ph
     return src
 end
