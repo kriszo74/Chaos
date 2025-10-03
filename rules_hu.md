@@ -65,12 +65,6 @@ F) Felesleges guardok kerülése: ha egy érték létezése garantált (pl. inic
 
 G) Láncolt értékadás: használd rövid, mellékhatás‑mentes inicializálásoknál; pl. fig[1,1] = gl = GridLayout(). A kifejezés jobbra asszociatív, ezért ekvivalens a gl = GridLayout(); fig[1,1] = gl formával. Mellékhatásos vagy több lépcsős hívások láncolását kerüld, mert nehezíti a debuggolást.
 
-H) Regex‑horgonyok és blokkazonosítók
-- Minden módosítható kódrészhez egyedi azonosító (ID) tartozzon, ami a fájlban csak egyszer szerepel.
-- Használj START/END blokkokat kommentben, a nyelv szintaxisának megfelelően.
-- A blokk fejlécében szerepeljen az ID és opcionálisan verzió: ID=FOO, v1.
-- Módosításkor növeld a verziót: v2, v3, …
-
 5 FORMÁZÁS
 
 A) Karakterkódolás: UTF‑8 (BOM nélkül).

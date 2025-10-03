@@ -1,14 +1,11 @@
 # ---- 3dtools.jl ----
 
 # Színkezeléshez használjuk a Colors csomagot (Makie függősége)
-# %% START ID=IMPORTS_3DTOOLS, v3
 using Colors
 using Makie, GLMakie
 using GeometryBasics: Point3f, GLTriangleFace, Sphere
 using LinearAlgebra: norm, normalize, dot, cross, I
-# %% END ID=IMPORTS_3DTOOLS
 
-# %% START ID=CREATE_DETAILED_SPHERE, v3
 # Gömbfelület generálása egyetlen hívással (GeometryBasics helper)
 # center  – a gömb közepe
 # radius  – sugár
@@ -74,13 +71,11 @@ function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
 
     return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
 end
-# %% END ID=CREATE_DETAILED_SPHERE
 
 # ÚJ: RR colormap helyőrző (egyelőre egyszínű – cyan)
 # RR colormap – egyelőre a wrapper nem használja, de itt készítjük elő a kétoldali skálát
 # Megjegyzés: jelenleg a render még egyszínű; később a shader ezt fogja használni.
 
-# %% START ID=HSV_SHIFT_RGBA, v1
 # Hue-eltolás + (enyhe) deszaturálás HSV-ben
 @inline function _hsv_shift_rgba(c::RGBAf, Δh_deg::Float32, sat_scale::Float32)
     rgb = RGB(c.r, c.g, c.b)
@@ -91,9 +86,7 @@ end
     rgb2 = RGB(HSV(h, s, v))
     return RGBAf(Float32(rgb2.r), Float32(rgb2.g), Float32(rgb2.b), alpha(c))
 end
-# %% END ID=HSV_SHIFT_RGBA
 
-# %% START ID=MAKE_RR_COLORMAP, v1
 """
 make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int=256)
   Kétoldali (−→+) gradienst készít egy alapszínből úgy, hogy a közép kissé
@@ -110,13 +103,9 @@ function make_rr_colormap(base::RGBAf; h_max_deg=120f0, desat_mid=0.15f0, n::Int
     end
     return out
 end
-# %% END ID=MAKE_RR_COLORMAP
 
-# %% START ID=RR_COLORMAP_CONST, v1
 const RR_COLORMAP = make_rr_colormap(RGBAf(0, 1, 1, 1); h_max_deg=120f0, desat_mid=0.15f0, n=256)
-# %% END ID=RR_COLORMAP_CONST; h_max_deg=120f0, desat_mid=0.15f0, n=256)
 
-# %% START ID=MAKE_BIPOLAR_COLORMAP, v2
 # RR colormap → 1D textúra (N×1), hogy a v (latitude) mentén mintázható legyen
 # Kétpólusú (neg/poz) fix paletta építése – pl. classic vörös/kék
 # Lágy, "knee"-es átmenet a közép körül smoothstep-pel (mid_width szabályozza)
@@ -146,9 +135,7 @@ function make_bipolar_colormap(pos::RGBAf, neg::RGBAf; n::Int=256,
     end
     return out
 end
-# %% END ID=MAKE_BIPOLAR_COLORMAP
 
-# %% START ID=MAKE_LAT_BWR_COLORMAP, v1
 # Szélesség‑alapú kék→fehér→vörös gradiens: v=1 (északi pólus) = kék, v=0 (déli) = vörös, v≈0.5 (egyenlítő) = fehér/szürke
 @inline function _lerp_rgba(a::RGBAf, b::RGBAf, t::Float32)
     t = clamp(t, 0f0, 1f0)
@@ -178,9 +165,7 @@ function make_lat_bwr_colormap(n::Int; blue::RGBAf=RGBAf(0,0,1,1), red::RGBAf=RG
     end
     return reshape(out, n, 1)
 end
-# %% END ID=MAKE_LAT_BWR_COLORMAP
 
-# %% START ID=RR_TEXTURE_FOR, v3
 @inline function rr_texture_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256,
                                  rr_scalar=0f0, beta_max=0.7f0, mid_width=0.12f0,
                                  palette::Symbol=:classic, pos_color=:blue, neg_color=:red,
@@ -201,17 +186,13 @@ end
         return reshape(cmap, n, 1)
     end
 end
-# %% END ID=RR_TEXTURE_FOR
 
-# %% START ID=RR_COLORMAP_FOR, v1
 # Alapszín → RR colormap helper (instancing‑kompatibilis, későbbi shaderhez is jó)
 @inline function rr_colormap_for(base_color; h_max_deg=120f0, desat_mid=0.15f0, n=256)
     base_rgba = RGBAf(Makie.to_color(base_color))
     return make_rr_colormap(base_rgba; h_max_deg=Float32(h_max_deg), desat_mid=Float32(desat_mid), n=n)
 end
-# %% END ID=RR_COLORMAP_FOR
 
-# %% START ID=SETUP_SCENE, v1
 # -----------------------------------------------------------------------------
 # Jelenet (Scene) létrehozása háttérszínnel – mindig LScene, ortografikus kamera
 # -----------------------------------------------------------------------------
@@ -224,9 +205,7 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
             upvector     = Vec3f(0,  1, 0))
     return fig, scene
 end
-# %% END ID=SETUP_SCENE
 
-# %% START ID=RRPARAMS_STRUCT, v1
 # -----------------------------------------------------------------------------
 # RR instancing wrapper – jelenleg pass-through meshscatter!, később shaderrel bővítjük
 # -----------------------------------------------------------------------------
@@ -238,15 +217,11 @@ struct RRParams
     h_max_deg::Float32    # hue-eltolás maximum (°)
     desat_mid::Float32    # közép deszaturálás mértéke [0..1]
 end
-# %% END ID=RRPARAMS_STRUCT
 
-# %% START ID=RRPARAMS_CTOR, v2
 RRParams(; omega_dir=Vec3f(1,0,0), RR_scalar=0f0, c_ref=1f0,
            beta_max=0.7f0, h_max_deg=120f0, desat_mid=0.15f0) =
     RRParams(omega_dir, RR_scalar, c_ref, beta_max, h_max_deg, desat_mid)
-# %% END ID=RRPARAMS_CTOR
 
-# %% START ID=EQUATOR_FACING_AXIS, v1
 # -----------------------------------------------------------------------------
 # Az egyenlítő láthatóságát biztosító tengely választása
 #  • V a nézőirány (unit), W az eredeti forgástengely.
@@ -266,9 +241,7 @@ function equator_facing_axis(W::Vec3f, V::Vec3f)
     end
     return proj
 end
-# %% END ID=EQUATOR_FACING_AXIS
 
-# %% START ID=RR_VERTEX_COLORS, v3
 # -----------------------------------------------------------------------------
 # Per-vertex RR-színezés – egyszerű félgömb (kamera-független, equator-orientált)
 #  • Az oldalt a (A·N) előjele dönti el, ahol A a választott tengely (ált. equator_facing_axis).
@@ -302,4 +275,3 @@ function rr_vertex_colors(marker_mesh::GeometryBasics.Mesh, rr::RRParams; gamma:
     end
     return cols
 end
-# %% END ID=RR_VERTEX_COLORS

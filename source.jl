@@ -3,7 +3,6 @@
 # Forrás típus és műveletek – GUI‑független logika
 
 # Source: mozgás és megjelenítési adatok
-# %% START ID=SOURCE_TYPE, v1
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
     RV::SVector{3, Float64}      # sebesség vektor
@@ -15,9 +14,7 @@ mutable struct Source
     alpha::Float64               # áttetszőség
     plot::Any                    # plot handle
 end
-# %% END ID=SOURCE_TYPE
 
-# %% START ID=ADD_SOURCE, v2
 # add_source!: forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
 # NOTE: a 'world' típust itt sem annotáljuk (körkörös függés elkerülése – World a main.jl-ben).
 # Lépések: sugarpuffer és pozíciósor előkészítése → forrás regisztrálása → UV-s marker + 1×N RR‑textúra → instancing.
@@ -61,9 +58,7 @@ tex = reshape([RGBAf(1,0,0,1), RGBAf(0.5,0.5,0.5,1), RGBAf(0,0,1,1)], 3, 1)
     src.plot = ph
     return src
 end
-# %% END ID=ADD_SOURCE
 
-# %% START ID=UPDATE_RADII, v1
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 function update_radii(radii::Vector{Float64}, bas_t::Float64, t::Float64, density::Float64)
     dt_rel = (t - bas_t)
@@ -77,17 +72,13 @@ function update_radii(radii::Vector{Float64}, bas_t::Float64, t::Float64, densit
     end
     return radii
 end
-# %% END ID=UPDATE_RADII
 
-# %% START ID=UPDATE_POSITIONS, v1
 # Pozíciók újragenerálása adott N alapján
 function update_positions(N::Int, src::Source, world)
     dp = src.RV / world.density            # két impulzus közti eltolás
     return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]
 end
-# %% END ID=UPDATE_POSITIONS
 
-# %% START ID=APPLY_TIME, v1
 # Idő szerinti vizuális állapot alkalmazása (scrub/play)
 # Csak a sugarakat frissíti a world.t alapján. Később bővíthető a pozíciókra is.
 function apply_time!(world)
@@ -95,9 +86,7 @@ function apply_time!(world)
         src.radii[] = update_radii(src.radii[], src.bas_t, world.t[], world.density)
     end
 end
-# %% END ID=APPLY_TIME
 
-# %% START ID=UPDATE_SOURCE_RV, v1
 # RV skálár frissítése + positions újragenerálása (irány megtartása)
 # Paraméterek: RV (nagyság), src (forrás), world (világállapot)
 function update_source_RV(RV::Float64, src::Source, world)
@@ -105,9 +94,7 @@ function update_source_RV(RV::Float64, src::Source, world)
     _, src.RV = calculate_coordinates(world, src, RV, 0.0, 0.0, 90.0)
     src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
 end
-# %% END ID=UPDATE_SOURCE_RV
 
-# %% START ID=CALC_COORDS, v1
 # Koordináták számítása referenciaként adott src alapján
 # - src == nothing → pos=(0,0,0), RV_vec=(RV,0,0)
 # - különben a src aktuális akt_p/RV értékeihez képest yaw/pitch szerint számol
@@ -143,5 +130,4 @@ function calculate_coordinates(world,
     RV_vec = RV * dir
     return pos, RV_vec
 end
-# %% END ID=CALC_COORDS
 

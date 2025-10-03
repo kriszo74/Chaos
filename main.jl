@@ -1,12 +1,9 @@
-# %% START ID=MAIN_IMPORTS, v1
 using GLMakie
 GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
 using StaticArrays
 using GeometryBasics
 using Observables  # Observable támogatás
-# %% END ID=MAIN_IMPORTS
 
-# %% START ID=MAIN_RUNTIME_DEF, v1
 # rendszer-paraméterek
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
@@ -15,13 +12,9 @@ struct Runtime
     paused::Observable{Bool}
     pause_ev::Base.Event
 end
-# %% END ID=MAIN_RUNTIME_DEF
 
-# %% START ID=MAIN_RUNTIME_INIT, v1
 rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
-# %% END ID=MAIN_RUNTIME_INIT
 
-# %% START ID=MAIN_WORLD_DEF, v1
 include("source.jl") # forrás‑logika
 mutable struct World # világállapot
     E::Float64
@@ -30,25 +23,17 @@ mutable struct World # világállapot
     t::Observable{Float64}
     sources::Vector{Source}
 end
-# %% END ID=MAIN_WORLD_DEF
 
-# %% START ID=MAIN_WORLD_INIT, v1
 world = World(3.0, 1.0, 10.0, Observable(0.0), Source[]) # világállapot inicializálás
-# %% END ID=MAIN_WORLD_INIT
 
 # jelenet beállítása
-# %% START ID=MAIN_SCENE_SETUP, v1
 include("3dtools.jl")
 fig, scene = setup_scene()
-# %% END ID=MAIN_SCENE_SETUP
 
-# %% START ID=MAIN_GUI_SETUP, v1
 include("gui.jl")
 setup_gui!(fig, scene, world, rt)
-# %% END ID=MAIN_GUI_SETUP
 
 # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
-# %% START ID=MAIN_START_SIM, v1
 function start_sim!(fig, scene, world::World, rt::Runtime)
     rt.sim_task[] = @async begin
         dt = target = 1/60
@@ -70,10 +55,8 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
         world.t[] = 0.0
     end
 end
-# %% END ID=MAIN_START_SIM
 
-# %% START ID=MAIN_TAIL, v1
 screen = display(fig)  # ablak megjelenítése (screen visszaadva)
 zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
 isinteractive() || wait(screen) # F5 (nem interaktív) futásnál blokkoljunk az ablak bezárásáig
-# %% END ID=MAIN_TAIL
+
