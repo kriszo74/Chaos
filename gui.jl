@@ -1,10 +1,3 @@
-# ---- gui.jl ----
-
-# Namespace tisztítás a Makie prefixek csökkentésére
-
-using Makie: set_close_to!, Outside
-
-
 # mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
@@ -94,16 +87,15 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     rt.paused[] = true  # rebuild közben álljunk meg
     empty!(scene)                          # teljes újraépítés
     foreach(delete!, contents(sources_gl))  
-# blokk eltávolítása
     trim!(sources_gl)                      # üres sor/oszlop levágása
 
     empty!(world.sources)
-
+    tex = rr_texture_from_hue(0f0)
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
-        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), spec.color, 0.2, nothing)
+        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]),tex, 0.2, nothing)
         add_source!(world, scene, src)
 
         # color row (ALWAYS)
@@ -114,6 +106,17 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                      src.color = c
                      src.plot[:color][] = c
                  end)
+        # hue row (DISCRETE 0..330° step 30°)
+        let h_vals = collect(0:30:330),
+            labels = [string(HUE30_NAMES[h], " (", h, "°)") for h in h_vals]
+            mk_menu!(fig, sources_gl, row += 1, "hue $(i)", labels;
+                     onchange = sel -> begin
+                         ix = findfirst(==(sel), labels)
+                         h  = Float32(h_vals[ix])
+                         src.plot[:color][] = rr_texture_from_hue(h)
+                     end)
+        end
+
     # alpha row (ALWAYS)
         mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                    startvalue = src.alpha,
@@ -124,10 +127,12 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         mk_slider!(fig, sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
                    onchange = v -> update_source_RV(v, world.sources[i], world))
-        # RR (skalár, c-hez mérhető) – egyelőre csak UI
+        
+        # RR (skalár) – kötve: update_source_RR (1×3 textúra: red–midGray–blue)
         mk_slider!(fig, sources_gl, row += 1, "RR $(i)", -5.0:0.1:5.0;
                    startvalue = spec.RR,
-                   onchange = _ -> nothing)  # TODO: kölcsönhatásoknál vektorrá emelni
+                   onchange = v -> update_source_RR(v, world.sources[i]))
+
 
         # Csak referencia esetén: distance / yaw / pitch – TODO: live update
         if spec.ref !== nothing

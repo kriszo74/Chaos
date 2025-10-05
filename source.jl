@@ -10,7 +10,7 @@ mutable struct Source
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
     radii::Observable{Vector{Float64}}  # sugarak puffer
-    color::Symbol                # szín
+    color::Any                   # textúra (Makie.texture) vagy egyszínű szín
     alpha::Float64               # áttetszőség
     plot::Any                    # plot handle
 end
@@ -25,29 +25,14 @@ function add_source!(world, scene, src::Source)
     src.positions = update_positions(N, src, world)            # kezdeti pozíciósor generálása aktuális RV-vel
     push!(world.sources, src)
 
-    # RR orientáció (egység irányvektor az RV-ből)
-    rv = src.RV; len = sqrt(sum(abs2, rv))
-    omega_dir = len > 0 ? Makie.Vec3f(Float32(rv[1]/len), Float32(rv[2]/len), Float32(rv[3]/len)) : Makie.Vec3f(1,0,0)
-    rr = RRParams(omega_dir=omega_dir, RR_scalar=Float32(src.RR));
-    
-    # Kamera nézőiránya (ortografikus setup_scene szerint): V = (0,0,-1)
-    V = Vec3f(0, 0, -1)    
-
-    # Equator‑orientált tengely: a marker Z‑je legyen ⟂ V, hogy az egyenlítő mindig látszódjon
-    axis = equator_facing_axis(rr.omega_dir, V)
-
-    # Marker: lat‑long gömb UV‑val
+     # Marker: lat‑long gömb UV‑val
     marker_mesh = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0)
-
-
-    # Egyszerű 1×N textúra (jelenleg végleges)
-tex = reshape([RGBAf(1,0,0,1), RGBAf(0.5,0.5,0.5,1), RGBAf(0,0,1,1)], 3, 1)
 
     # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
     ph = meshscatter!(scene, src.positions;
         marker       = marker_mesh,             # UV-s gömb marker
         markersize   = src.radii,              # példányonkénti sugárvektor
-        color        = tex,                    # textúra (Matrix{RGBAf})
+        color        = src.color,                    # textúra (Matrix{RGBAf})
         # uv_transform = :flip_y,              # (új) opcionális Y-tükör
         rotation     = Vec3f(0.0, pi/4, 0.0),  # (új)) radián (x, y, z) TODO: mesh módosítása, hogy ne kelljen alaprotáció.
         transparency = true,                   # átlátszóság engedélyezve
@@ -93,6 +78,14 @@ function update_source_RV(RV::Float64, src::Source, world)
     # irány megtartása: pitch=90°, distance=0, yaw=0 → dir == u
     _, src.RV = calculate_coordinates(world, src, RV, 0.0, 0.0, 90.0)
     src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
+end
+
+# RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
+function update_source_RR(new_RR::Float64, src::Source; mid=RGBAf(0.5,0.5,0.5,1), red=RGBAf(1,0,0,1), blue=RGBAf(0,0,1,1))
+    src.RR = new_RR
+    tex = reshape(RGBAf[red, mid, blue], 3, 1)  # 1×3 textúra
+    src.plot[:color][] = tex
+    return src
 end
 
 # Koordináták számítása referenciaként adott src alapján
