@@ -10,7 +10,7 @@ mutable struct Source
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
     radii::Observable{Vector{Float64}}  # sugarak puffer
-    color::Any                   # textúra (Makie.texture) vagy egyszínű szín
+    color::Matrix{RGBAf}         # textúra MxN színmátrix (pl. 3x1 RGBAf)
     alpha::Float64               # áttetszőség
     plot::Any                    # plot handle
 end
