@@ -98,14 +98,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]),tex, 0.2, nothing)
         add_source!(world, scene, src)
 
-        # color row (ALWAYS)
-        mk_menu!(fig, sources_gl, row += 1, "color $(i)", COLORS;
-                 selected_index = findfirst(==(string(src.color)), COLORS),
-                 onchange = sel -> begin
-                     c = Symbol(sel)
-                     src.color = c
-                     src.plot[:color][] = c
-                 end)
+        
         # hue row (DISCRETE 0..330° step 30°)
         let h_vals = collect(0:30:330),
             labels = [string(HUE30_NAMES[h], " (", h, "°)") for h in h_vals]
