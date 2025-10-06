@@ -38,7 +38,7 @@ end
 ## --- Dynamic preset helpers ---
 
 # GUI konstansok (NFC)
-# TODO: Minden konstans (GUI_COL_W, PRESET_ORDER, REF_NONE, COLORS, PRESET_TABLE, stb.) külső fájlból legyen betöltve (pl. TOML/JSON). Ideiglenesen hardcode.
+# TODO: Minden konstans (GUI_COL_W, PRESET_ORDER, REF_NONE, PRESET_TABLE, stb.) külső fájlból legyen betöltve (pl. TOML/JSON). Ideiglenesen hardcode.
 const GUI_COL_W = 220
 # ÚJ: egységes sebességskálázó (a fő RV hossz). A további forrásoknál ebből képzünk vektort.
 const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
@@ -77,8 +77,6 @@ const PRESET_TABLE = Dict(
 )
 
 
-
-const COLORS = ["cyan","magenta","yellow","green","orange","red","blue"]
 
 
 # 
