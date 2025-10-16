@@ -96,13 +96,16 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), atlas, 0.2, nothing)
         add_source!(world, scene, src)
 
-        
+        # aktuális hue blokk index (1..12) a RR csúszkához
+        cur_h_ix = Ref(1)
+
         # hue row (DISCRETE 0..330° step 30°)
         let h_vals = collect(0:30:330),
             labels = [string(HUE30_NAMES[h], " (", h, "°)") for h in h_vals]
             mk_menu!(fig, sources_gl, row += 1, "hue $(i)", labels;
                      onchange = sel -> begin
                          ix = findfirst(==(sel), labels)
+                         cur_h_ix[] = ix
                          # Atlas blokkszélesség és oszlop kiválasztása (középső oszlop)
                          cols_all = size(atlas, 2)
                          ncols    = Int(cols_all ÷ length(h_vals))
@@ -112,6 +115,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                          sx = 1f0 / Float32(cols_all)
                          uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
                          src.plot[:uv_transform][] = uvtr
+                         @info "Hue→atlas oszlop" source=i hue=h_vals[ix] ix=ix abscol=abscol ncols=ncols
                      end)
         end
 
@@ -126,10 +130,23 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                    startvalue = sqrt(sum(abs2, src.RV)),
                    onchange = v -> update_source_RV(v, world.sources[i], world))
         
-        # RR (skalár) – kötve: update_source_RR (1×3 textúra: red–midGray–blue)
+        # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
         mk_slider!(fig, sources_gl, row += 1, "RR $(i)", -5.0:0.1:5.0;
                    startvalue = spec.RR,
-                   onchange = v -> update_source_RR(v, world.sources[i]))
+                   onchange = v -> begin
+                       src.RR = v  # opcionális, a világállapot kedvéért
+                       cols_all = size(atlas, 2)
+                       ncols    = Int(cols_all ÷ 12)
+                       # -5..5 → 0..1 normalizálás
+                       r = clamp((Float32(v) + 5f0) / 10f0, 0f0, 1f0)
+                       col_in = clamp(1 + round(Int, r * (ncols - 1)), 1, ncols)
+                       abscol = (cur_h_ix[] - 1) * ncols + col_in
+                       u0 = Float32((abscol - 1) / cols_all)
+                       sx = 1f0 / Float32(cols_all)
+                       uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
+                       src.plot[:uv_transform][] = uvtr
+                       @info "RR→atlas oszlop" source=i rr=v r=r abscol=abscol ncols=ncols
+                   end)
 
 
         # Csak referencia esetén: distance / yaw / pitch – TODO: live update
