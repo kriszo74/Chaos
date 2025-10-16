@@ -28,12 +28,18 @@ function add_source!(world, scene, src::Source)
      # Marker: lat‑long gömb UV‑val
     marker_mesh = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0)
 
+cols = size(src.color, 2)
+    col  = min(10, cols)                 # demo: 10. oszlop, ha kevesebb van, akkor az utolsó
+    u0   = (col - 1) / cols              # offset a 2. (v) komponens mentén
+    sx   = 1f0 / cols                    # oszlopszélesség
+    uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
+
     # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
     ph = meshscatter!(scene, src.positions;
         marker       = marker_mesh,             # UV-s gömb marker
         markersize   = src.radii,              # példányonkénti sugárvektor
         color        = src.color,                    # textúra (Matrix{RGBAf})
-        # uv_transform = :flip_y,              # (új) opcionális Y-tükör
+        uv_transform = uvtr,              # DEMÓ: atlasz 10. oszlop kivágása
         rotation     = Vec3f(0.0, pi/4, 0.0),  # (új)) radián (x, y, z) TODO: mesh módosítása, hogy ne kelljen alaprotáció.
         transparency = true,                   # átlátszóság engedélyezve
         alpha        = src.alpha,              # átlátszóság mértéke

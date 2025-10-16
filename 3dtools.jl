@@ -38,7 +38,7 @@ function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
             u = Float32(j/nlons)
             idx = rowoff + j + 1
             verts[idx] = Point3f(center .+ r .* Vec3f(x, y, z))
-            uvs[idx]   = Vec2f(u, v)
+            uvs[idx]   = Vec2f(v, u)
         end
     end
 
@@ -80,4 +80,29 @@ const HUE30_NAMES = Dict{Int,Symbol}(0=>:red, 30=>:orange, 60=>:yellow, 90=>:cha
 function rr_texture_from_hue(h_mid::Float32; s::Float32=1f0, v::Float32=1f0)
     Δ::Float32 = (h_mid % 60f0 == 0f0) ? 60f0 : 30f0
     return reshape(RGBAf[RGBAf(HSV(h_mid-Δ, s, v)), RGBAf(HSV(h_mid, s, v)), RGBAf(HSV(h_mid+Δ, s, v))], 3, 1)
+end
+
+# Atlasz 12 közép-hue-hoz; oszlopok r∈[0,1] (parts+1), sorok: neg/mid/pos.
+function exp_rr_texture_from_hue(parts::Integer; s::Float32=1f0, v::Float32=1f0) 
+    @assert parts ≥ 1 "parts legyen ≥ 1"
+    ncols = Int(parts) + 1  # parts=20 → 21
+    rvals = collect(LinRange(0f0, 1f0, ncols))  # r lépcsők 0..1 között, egyenletes rács (N = parts+1)
+    hs    = Float32.(0:30:330)               # 12 közép-hue (fok): 0°,30°,…,330°
+    atlas = Matrix{RGBAf}(undef, 3, ncols * length(hs))
+
+    @inbounds for (i, hmid) in enumerate(hs)
+        Δ::Float32 = (mod(hmid, 60f0) == 0f0) ? 60f0 : 30f0  # Δ (fok): 60°, ha h_mid % 60 == 0; különben 30°
+        base = (i-1) * ncols  # atlasz-blokk oszlop offsetje az i. közép-hue-hoz (0-indexelt blokkok)
+        for j in 1:ncols
+            r = rvals[j]  # normált forgási skála: r ∈ [0,1] (0: nincs eltérés, 1: max. Δ)
+            δ = r * Δ  # hue-eltérés (fok) a közép-hue-hoz képest: δ ∈ [0, Δ]
+            hneg = hmid - δ  # kék irány (negatív eltérítés) – 'neg' sáv
+            hpos = hmid + δ  # vörös irány (pozitív eltérítés) – 'pos' sáv
+            col = base + j  # atlasz oszlopindex: adott hue-blokk kezdete + lokális oszlop
+            atlas[1, col] = RGBAf(HSV(mod(hneg, 360f0), s, v))  # sor1: neg (kékelt) – HSV→RGBAf, 360°-ra modolva
+            atlas[2, col] = RGBAf(HSV(hmid, s, v))              # sor2: mid (alapszín) – változatlan hue
+            atlas[3, col] = RGBAf(HSV(mod(hpos, 360f0), s, v))  # sor3: pos (vöröselt) – HSV→RGBAf, 360°-ra modolva
+        end
+    end
+    return atlas  # pl. parts=20 → 3 × ((20+1)*12) = 3 × 252
 end

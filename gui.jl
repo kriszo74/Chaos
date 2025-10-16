@@ -1,4 +1,4 @@
-# mk_menu!: label + legördülő + onchange callback
+﻿# mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
     grid[row, 2:3] = menu = Menu(fig, options = options)
@@ -81,7 +81,7 @@ const PRESET_TABLE = Dict(
 
 # 
 # Forráspanelek újraépítése és jelenet megtisztítása
-function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String)
+function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String, atlas)
     rt.paused[] = true  # rebuild közben álljunk meg
     empty!(scene)                          # teljes újraépítés
     foreach(delete!, contents(sources_gl))  
@@ -152,6 +152,9 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(GUI_COL_W))  # keskeny GUI-oszlop
 
+    # RR atlasz előállítása (egyelőre fix parts)
+    atlas = exp_rr_texture_from_hue(20)
+
     gl[3, 1]   = Label(fig, "Sources"; color = :white)
     gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
     sources_gl.alignmode = Outside(0) # külső padding
@@ -169,7 +172,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     preset_menu = mk_menu!(fig, gl, 2, "Preset", presets; selected_index = 1,
                            onchange = sel -> begin
                                current_preset[] = sel
-                               rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel)
+                               rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel, atlas)
                                # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
                                apply_time!(world)
                            end)
@@ -179,7 +182,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
     sources_gl.alignmode = Outside(0)
 
-    rebuild_sources_panel!(fig, scene, sources_gl, world, rt, first(presets))
+    rebuild_sources_panel!(fig, scene, sources_gl, world, rt, first(presets), atlas)
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
     sDensity = mk_slider!(fig, gl, 6, "density", 0.5:0.5:20.0;
