@@ -93,7 +93,7 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
-        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]),tex, 0.2, nothing)
+        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), atlas, 0.2, nothing)
         add_source!(world, scene, src)
 
         
@@ -103,8 +103,15 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
             mk_menu!(fig, sources_gl, row += 1, "hue $(i)", labels;
                      onchange = sel -> begin
                          ix = findfirst(==(sel), labels)
-                         h  = Float32(h_vals[ix])
-                         src.plot[:color][] = rr_texture_from_hue(h)
+                         # Atlas blokkszélesség és oszlop kiválasztása (középső oszlop)
+                         cols_all = size(atlas, 2)
+                         ncols    = Int(cols_all ÷ length(h_vals))
+                         col_in   = clamp(Int(floor(ncols/2)), 1, ncols)
+                         abscol   = (ix - 1) * ncols + col_in
+                         u0 = Float32((abscol - 1) / cols_all)
+                         sx = 1f0 / Float32(cols_all)
+                         uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
+                         src.plot[:uv_transform][] = uvtr
                      end)
         end
 
@@ -189,7 +196,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
-                              rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
+                              rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[], atlas)
                               apply_time!(world)
                           end)
 
@@ -216,7 +223,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
-                           rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[])
+                           rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[], atlas)
                            # Frissítsük a t csúszka tartományát és clampeljük az értékét
                            sT.range[] = 0.0:0.01:world.max_t
                            world.t[] = clamp(world.t[], 0.0, world.max_t)
