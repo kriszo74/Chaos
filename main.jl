@@ -1,5 +1,9 @@
+# ---- main.jl ----
+
 using GLMakie
-GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
+GLMakie.activate!(; focus_on_show=true, title="Chaos")
+#GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
+#GLMakie.set_window_config!(; title = "Chaos") # ezek menjenek a setup_scene() -be.
 using StaticArrays
 using GeometryBasics
 using Observables  # Observable támogatás

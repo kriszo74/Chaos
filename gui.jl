@@ -1,4 +1,6 @@
-﻿# mk_menu!: label + legördülő + onchange callback
+﻿# ---- gui.jl ----
+
+# mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
     grid[row, 2:3] = menu = Menu(fig, options = options)
@@ -69,7 +71,7 @@ const PRESET_TABLE = Dict(
     ],
     "Batch" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0),
-        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=45.0, pitch_deg=0.0),
+        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=45.0, pitch_deg=15.0),
         (color=:yellow,  RV=2.0, RR=0.0, ref=1,       distance=3.5, yaw_deg=-30.0,pitch_deg=15.0),
         (color=:green,   RV=2.0, RR=0.0, ref=2,       distance=2.0, yaw_deg=90.0, pitch_deg=-10.0),
         (color=:orange,  RV=2.0, RR=0.0, ref=3,       distance=1.5, yaw_deg=-90.0,pitch_deg=5.0),
@@ -77,6 +79,18 @@ const PRESET_TABLE = Dict(
 )
 
 
+
+
+# --- GUI context: központi állapot/erőforrás-csomag ---
+# Közösen használt GUI/Render elemek csomagja; később függvények között adjuk át.
+mutable struct GuiCtx
+    fig::Figure            # fő ablak (Figure)
+    scene::LScene          # 3D jelenet
+    gl::GridLayout         # bal oldali vezérlőpanel
+    sources_gl::GridLayout # forrás-panelek rácsa
+    atlas::Matrix{RGBAf}   # RR-színatlasz (3 x N)
+    # marker::Any          # (később) UV‑gömb marker
+end
 
 
 # 
@@ -131,21 +145,21 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
                    onchange = v -> update_source_RV(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(fig, sources_gl, row += 1, "RR $(i)", -5.0:0.1:5.0;
-                   startvalue = spec.RR,
+        mk_slider!(fig, sources_gl, row += 1, "RR $(i)", 0.0:0.1:2.0;
+                   startvalue = clamp(spec.RR, 0.0, 2.0),
                    onchange = v -> begin
-                       src.RR = v  # opcionális, a világállapot kedvéért
+                       src.RR = v  # opcionális, a világállapot kedvéért (0..2)
                        cols_all = size(atlas, 2)
-                       ncols    = Int(cols_all ÷ 12)
-                       # -5..5 → 0..1 normalizálás
-                       r = clamp((Float32(v) + 5f0) / 10f0, 0f0, 1f0)
+                       ncols    = Int(cols_all ÷ 12)   # parts=20 → ncols=21
+                       # 0..2 → 0..1 normalizálás (21 oszlop lefedése)
+                       r = clamp(Float32(v) / 2f0, 0f0, 1f0)
                        col_in = clamp(1 + round(Int, r * (ncols - 1)), 1, ncols)
                        abscol = (cur_h_ix[] - 1) * ncols + col_in
                        u0 = Float32((abscol - 1) / cols_all)
                        sx = 1f0 / Float32(cols_all)
                        uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
                        src.plot[:uv_transform][] = uvtr
-                       @info "RR→atlas oszlop" source=i rr=v r=r abscol=abscol ncols=ncols
+                       @info "RR→atlas oszlop" source=i rr=v r=r col_in=col_in abscol=abscol ncols=ncols
                    end)
 
 
@@ -172,28 +186,29 @@ end
 # GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
 
 function setup_gui!(fig, scene, world::World, rt::Runtime)
-    fig[1, 1] = gl = GridLayout() # Setting panel
-    gl.alignmode = Outside(10) # külső padding
+    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), Matrix{RGBAf}(undef, 0, 0))
+    fig[1, 1] = gctx.gl = GridLayout() # Setting panel
+    gctx.gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(GUI_COL_W))  # keskeny GUI-oszlop
 
     # RR atlasz előállítása (egyelőre fix parts)
     atlas = exp_rr_texture_from_hue(20)
 
-    gl[3, 1]   = Label(fig, "Sources"; color = :white)
-    gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
+    gctx.gl[3, 1]   = Label(fig, "Sources"; color = :white)
+    gctx.gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
     sources_gl.alignmode = Outside(0) # külső padding
 
     fig[1:2, 2] = scene  # jelenet: helyezés jobbra, két sor magas
     
     # --- Vezérlők ---
-    sE = mk_slider!(fig, gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
+    sE = mk_slider!(fig, gctx.gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
                     onchange = v -> (world.E = v))
 
     # Aktuális preset és t állapot a GUI-ban
     presets = collect(PRESET_ORDER)
     current_preset = Ref(first(presets))
     # Preset választó (fent tartjuk, mint eddig)
-    preset_menu = mk_menu!(fig, gl, 2, "Preset", presets; selected_index = 1,
+    preset_menu = mk_menu!(fig, gctx.gl, 2, "Preset", presets; selected_index = 1,
                            onchange = sel -> begin
                                current_preset[] = sel
                                rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel, atlas)
@@ -202,14 +217,14 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                            end)
 
     # Dinamikus Sources panel
-    gl[3, 1]   = Label(fig, "Sources"; color = :white)
-    gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
+    gctx.gl[3, 1]   = Label(fig, "Sources"; color = :white)
+    gctx.gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
     sources_gl.alignmode = Outside(0)
 
     rebuild_sources_panel!(fig, scene, sources_gl, world, rt, first(presets), atlas)
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
-    sDensity = mk_slider!(fig, gl, 6, "density", 0.5:0.5:20.0;
+    sDensity = mk_slider!(fig, gctx.gl, 6, "density", 0.5:0.5:20.0;
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
@@ -219,7 +234,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
     disable_sT_onchange = Ref(false) # guard: különbség emberi vs. programozott slider-mozgatás között
-    sT = mk_slider!(fig, gl, 8, "t", 0.0:0.01:world.max_t;
+    sT = mk_slider!(fig, gctx.gl, 8, "t", 0.0:0.01:world.max_t;
                     startvalue = world.t[],
                     onchange = v -> begin
                         disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
@@ -236,7 +251,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 
-    sMaxT = mk_slider!(fig, gl, 7, "max_t", 1.0:0.5:60.0;
+    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 1.0:0.5:60.0;
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
@@ -248,7 +263,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                        end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
-    btnPlay = mk_button!(fig, gl, 5, "▶"; onclick = btn -> begin
+    btnPlay = mk_button!(fig, gctx.gl, 5, "▶"; onclick = btn -> begin
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
             rt.sim_task[] = start_sim!(fig, scene, world, rt)
             rt.paused[] = false
@@ -267,5 +282,3 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 end
-
-

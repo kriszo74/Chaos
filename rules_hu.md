@@ -1,8 +1,10 @@
-prompt (emlékeztető magamnak, ezt hagyd figyelmen kívül): 1. Ügynök mód: Olvasd be rules_hu.md-t és az összes .jl file-t a github csatlakozón keresztül! 2. Vászon: Tedd ki őket külön-külön vászonra változtatás nélkül!
+prompt (emlékeztető magamnak, ezt hagyd figyelmen kívül ezt a bekezdést): 1. Ügynök mód: Olvasd be rules_hu.md-t és az összes .jl file-t a github csatlakozón keresztül! 2. Vászon: Tedd ki őket külön-külön vászonra változtatás nélkül! B) Vászon: Tedd ki canvas-ra rules_hu.md-t! Ezután kérd be main.jl-t és az összes include-olt .jl-t egyenként és tedd őket külön-külön canvasra változtatás nálkül
+
+# rules_hu.md
 
 1 WORKFLOW
 
-A) Töltsd be ezt a szabályzatot (rules_hu.md) egy vászonra változatlanul, utána rögtön main.jl-t és addig meg se állj, amíg az összes kódvászon létre nem jött (egy fájl = egy vászon).
+A) Töltsd be ezt a szabályzatot (rules_hu.md) egy vászonra változatlanul, utána rögtön kérd be main.jl-t és az összes include-olt jl-t. Minden beadott jl kerüljön vászonra kerüljön (egy fájl = egy vászon).
 
 B) Fő feladat meghatározása: ha minden vászon létrejött, akkor kérdezd meg, hogy mi a feladat.
 
