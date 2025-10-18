@@ -1,50 +1,30 @@
-# Repository Guidelines
+1 ÁLTALÁNOS SZABÁLYOK
 
-## Project Structure & Modules
-- Root `.jl` scripts contain all source:
-  - `main.jl` – entry point/runner.
-  - `source.jl` – core logic/utilities.
-  - `gui.jl` – UI-related routines (if used).
-  - `3dtools.jl` – 3D/geometry helpers.
-- Add tests under `test/` (e.g., `test/runtests.jl`, `test/test_core.jl`).
-- Place any data/assets under `assets/` and reference with relative paths.
+A) Csak sebészi módosítás engedélyezett:
+- TÖRLÉS vagy PONTOS CSERE megengedett.
+- Nincs újrafogalmazás, nincs tartalmi bővítés.
+- A meglévő sorokat, bekezdéseket, struktúrát meg kell őrizni.
 
-## Build, Run, and Test
-- Run the program:
-  - `julia main.jl`
-  - From REPL: `include("main.jl")`
-- Format code (recommended):
-  - `julia -e 'using Pkg; Pkg.add("JuliaFormatter"); using JuliaFormatter; format(".")'`
-- Run tests (when `test/` exists):
-  - `julia test/runtests.jl`
-  - Or REPL: `include("test/runtests.jl")`
+2 KOMMENTELÉS
 
-## Coding Style & Naming
-- Indentation: 4 spaces; UTF-8; max ~92 chars/line.
-- Naming: `snake_case` for functions/variables; `CamelCase` for modules/types.
-- Documentation: triple-quoted docstrings above public methods; include minimal examples.
-- Patterns: avoid global mutation; prefer pure functions; use broadcasting and dot calls.
-- Lint/format with `JuliaFormatter`; keep diffs minimal and focused.
+D) Egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti; továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett, de soha sem az utasítás sor előtt. Legyen tömör (≤100 karakter). Ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
 
-## Testing Guidelines
-- Framework: `Test` stdlib.
-- Layout: `test/runtests.jl` includes other `test_*.jl` files.
-- Conventions: one behavior per test block; use `@test`, `@test_throws`.
-- Coverage: target meaningful coverage of new/changed code; add regression tests for bugs.
+3 STÍLUSPREFERENCIA
 
-## Commit & Pull Requests
-- Commits: imperative mood, concise scope (e.g., `fix: handle empty mesh`).
-- Reference issues with `Fixes #123` when applicable.
-- PRs must include:
-  - Clear summary, context, and rationale.
-  - Linked issues; screenshots/GIFs for UI changes (`gui.jl`).
-  - Notes on tests added/updated and any breaking changes.
+A) Pragmatikus KISS + „move-fast” prototipizálás; minimalista util / UNIX-szerű „kis eszköz” szemlélet. A tömörség és egyszerűség elsődleges; a guardok és „keményítés” később, célzottan kerüljenek be.
 
-## Architecture Notes
-- Keep `main.jl` thin: parse args/setup and delegate to `source.jl` APIs.
-- Encapsulate UI-only logic in `gui.jl`; reuse core functions from `source.jl`.
-- Isolate geometry/math in `3dtools.jl` with unit-tested, side-effect–free functions.
+4 KÓDOLÁSI PREFERENCIÁK
 
-## Security & Configuration
-- Do not commit secrets or machine-specific paths.
-- Prefer environment variables or `config/*.toml` when configuration is needed.
+A) Rövidzáras feltételek: egyszerű, egyutasításos esetekben használd az isnothing(x) || do_sg() / cond && action() mintát. Ha több utasítást kell feltételesen végrehajtani, használj if … end szerkezetet. Ne keverd === nothing-nel; az isnothing(x) a preferált.
+
+B) Egyszerhasználatos lokálisok kerülése: ahol olvasható, preferáld az inline konstrukciót (pl. add_source!(Source(...))).
+
+C) Fail‑fast elv: inkább dobjunk hibát, mint csendben visszaessünk (pl. direkt dict‑indexelés, ::Int assert).
+
+D) Callback sorrend: az inicializáló állítások (pl. i_selected) után történjen a feliratkozás (on(...)).
+
+E) Observable‑kötések: általános helper(ek)be szervezve, opcionális paraméterekkel (pl. mk_slider! → bind_to, transform).
+
+F) Felesleges guardok kerülése: ha egy érték létezése garantált (pl. inicializálási sorrend miatt), ne használjunk @isdefined‑et.
+
+G) Láncolt értékadás: használd rövid, mellékhatás‑mentes inicializálásoknál; pl. fig[1,1] = gl = GridLayout(). A kifejezés jobbra asszociatív, ezért ekvivalens a gl = GridLayout(); fig[1,1] = gl formával. Mellékhatásos vagy több lépcsős hívások láncolását kerüld, mert nehezíti a debuggolást.
