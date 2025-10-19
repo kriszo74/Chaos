@@ -1,5 +1,16 @@
 ﻿# ---- gui.jl ----
 
+# --- GUI context: központi állapot/erőforrás-csomag ---
+# Közösen használt GUI/Render elemek csomagja; később függvények között adjuk át.
+mutable struct GuiCtx
+    fig::Figure            # fő ablak (Figure)
+    scene::LScene          # 3D jelenet
+    gl::GridLayout         # bal oldali vezérlőpanel
+    sources_gl::GridLayout # forrás-panelek rácsa
+    atlas::Matrix{RGBAf}   # RR-színatlasz (3 x N)
+    marker::GeometryBasics.Mesh            # UV‑gömb marker (GeometryBasics.Mesh)
+end
+
 # mk_menu!: label + legördülő + onchange callback
 function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
@@ -36,7 +47,6 @@ function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
     return btn
 end
 
-
 ## --- Dynamic preset helpers ---
 
 # GUI konstansok (NFC)
@@ -48,7 +58,6 @@ const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
 # Ref‑választó állapot (globális, egyszerű tároló)
 const REF_NONE = 0
 const ref_choice = Ref(Int[])
-
 
 # adatvezérelt preset-tábla a forrásokhoz (pozíció, szín)
 # PRESET specifikáció mezők – jelenleg csak betöltjük őket, a viselkedés változatlan (NFC)
@@ -78,28 +87,13 @@ const PRESET_TABLE = Dict(
     ],
 )
 
-
-
-
-# --- GUI context: központi állapot/erőforrás-csomag ---
-# Közösen használt GUI/Render elemek csomagja; később függvények között adjuk át.
-mutable struct GuiCtx
-    fig::Figure            # fő ablak (Figure)
-    scene::LScene          # 3D jelenet
-    gl::GridLayout         # bal oldali vezérlőpanel
-    sources_gl::GridLayout # forrás-panelek rácsa
-    atlas::Matrix{RGBAf}   # RR-színatlasz (3 x N)
-    # marker::Any          # (később) UV‑gömb marker
-end
-
-
 # 
 # Forráspanelek újraépítése és jelenet megtisztítása
-function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtime, preset::String, atlas)
+function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset::String)
     rt.paused[] = true  # rebuild közben álljunk meg
-    empty!(scene)                          # teljes újraépítés
-    foreach(delete!, contents(sources_gl))  
-    trim!(sources_gl)                      # üres sor/oszlop levágása
+    empty!(gctx.scene)                          # teljes újraépítés
+    foreach(delete!, contents(gctx.sources_gl))  
+    trim!(gctx.sources_gl)                      # üres sor/oszlop levágása
 
     empty!(world.sources)
     tex = rr_texture_from_hue(0f0)
@@ -107,8 +101,8 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
-        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), atlas, 0.2, nothing)
-        add_source!(world, scene, src)
+        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
+        add_source!(world, gctx.scene, src)
 
         # aktuális hue blokk index (1..12) a RR csúszkához
         cur_h_ix = Ref(1)
@@ -116,12 +110,12 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         # hue row (DISCRETE 0..330° step 30°)
         let h_vals = collect(0:30:330),
             labels = [string(HUE30_NAMES[h], " (", h, "°)") for h in h_vals]
-            mk_menu!(fig, sources_gl, row += 1, "hue $(i)", labels;
+            mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", labels;
                      onchange = sel -> begin
                          ix = findfirst(==(sel), labels)
                          cur_h_ix[] = ix
                          # Atlas blokkszélesség és oszlop kiválasztása (középső oszlop)
-                         cols_all = size(atlas, 2)
+                          cols_all = size(gctx.atlas, 2)
                          ncols    = Int(cols_all ÷ length(h_vals))
                          col_in   = clamp(Int(floor(ncols/2)), 1, ncols)
                          abscol   = (ix - 1) * ncols + col_in
@@ -134,22 +128,22 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
         end
 
     # alpha row (ALWAYS)
-        mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                    startvalue = src.alpha,
                    onchange = v -> (src.alpha = v),
                    target = src.plot, attr = :alpha)
 
         # RV (skálár) – LIVE recompute
-        mk_slider!(fig, sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
                    onchange = v -> update_source_RV(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(fig, sources_gl, row += 1, "RR $(i)", 0.0:0.1:2.0;
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:0.1:2.0;
                    startvalue = clamp(spec.RR, 0.0, 2.0),
                    onchange = v -> begin
                        src.RR = v  # opcionális, a világállapot kedvéért (0..2)
-                       cols_all = size(atlas, 2)
+                        cols_all = size(gctx.atlas, 2)
                        ncols    = Int(cols_all ÷ 12)   # parts=20 → ncols=21
                        # 0..2 → 0..1 normalizálás (21 oszlop lefedése)
                        r = clamp(Float32(v) / 2f0, 0f0, 1f0)
@@ -165,20 +159,20 @@ function rebuild_sources_panel!(fig, scene, sources_gl, world::World, rt::Runtim
 
         # Csak referencia esetén: distance / yaw / pitch – TODO: live update
         if spec.ref !== nothing
-            mk_slider!(fig, sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
+            mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
                        startvalue = spec.distance,
                        onchange = _ -> nothing)  # TODO
-            mk_slider!(fig, sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
+            mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = _ -> nothing)  # TODO
-            mk_slider!(fig, sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
+            mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = _ -> nothing)  # TODO
         end
     end
-    colsize!(sources_gl, 1, Relative(0.35))
-    colsize!(sources_gl, 2, Relative(0.5))
-    colsize!(sources_gl, 3, Relative(0.15))
+    colsize!(gctx.sources_gl, 1, Relative(0.35))
+    colsize!(gctx.sources_gl, 2, Relative(0.5))
+    colsize!(gctx.sources_gl, 3, Relative(0.15))
 end
 
 
@@ -186,17 +180,14 @@ end
 # GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
 
 function setup_gui!(fig, scene, world::World, rt::Runtime)
-    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), Matrix{RGBAf}(undef, 0, 0))
+    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), exp_rr_texture_from_hue(20), create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
     fig[1, 1] = gctx.gl = GridLayout() # Setting panel
     gctx.gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(GUI_COL_W))  # keskeny GUI-oszlop
 
-    # RR atlasz előállítása (egyelőre fix parts)
-    atlas = exp_rr_texture_from_hue(20)
-
     gctx.gl[3, 1]   = Label(fig, "Sources"; color = :white)
-    gctx.gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
-    sources_gl.alignmode = Outside(0) # külső padding
+    gctx.gl[4, 1:3] = gctx.sources_gl = GridLayout() # Sources panel
+    gctx.sources_gl.alignmode = Outside(0) # külső padding
 
     fig[1:2, 2] = scene  # jelenet: helyezés jobbra, két sor magas
     
@@ -211,24 +202,21 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     preset_menu = mk_menu!(fig, gctx.gl, 2, "Preset", presets; selected_index = 1,
                            onchange = sel -> begin
                                current_preset[] = sel
-                               rebuild_sources_panel!(fig, scene, sources_gl, world, rt, sel, atlas)
+                               rebuild_sources_panel!(gctx, world, rt, sel)
                                # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
                                apply_time!(world)
                            end)
 
     # Dinamikus Sources panel
-    gctx.gl[3, 1]   = Label(fig, "Sources"; color = :white)
-    gctx.gl[4, 1:3] = sources_gl = GridLayout() # Sources panel
-    sources_gl.alignmode = Outside(0)
 
-    rebuild_sources_panel!(fig, scene, sources_gl, world, rt, first(presets), atlas)
+    rebuild_sources_panel!(gctx, world, rt, first(presets))
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
     sDensity = mk_slider!(fig, gctx.gl, 6, "density", 0.5:0.5:20.0;
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
-                              rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[], atlas)
+                              rebuild_sources_panel!(gctx, world, rt, current_preset[])
                               apply_time!(world)
                           end)
 
@@ -255,7 +243,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
-                           rebuild_sources_panel!(fig, scene, sources_gl, world, rt, current_preset[], atlas)
+                            rebuild_sources_panel!(gctx, world, rt, current_preset[])
                            # Frissítsük a t csúszka tartományát és clampeljük az értékét
                            sT.range[] = 0.0:0.01:world.max_t
                            world.t[] = clamp(world.t[], 0.0, world.max_t)
