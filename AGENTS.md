@@ -5,15 +5,16 @@ A) Csak sebészi módosítás engedélyezett:
 - Nincs újrafogalmazás, nincs tartalmi bővítés.
 - A meglévő sorokat, bekezdéseket, struktúrát meg kell őrizni.
 
-2 KOMMENTELÉS
+B) Minden módosítás előtt előzetes egyeztetés szükséges
+- Kivétel: ha a prompt ACK: előtaggal indul
 
-D) Egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti; továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett, de soha sem az utasítás sor előtt. Legyen tömör (≤100 karakter). Ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
+C) Egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti; továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett, de soha sem az utasítás sor előtt. Legyen tömör (≤100 karakter). Ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
 
-3 STÍLUSPREFERENCIA
+2 STÍLUSPREFERENCIA
 
 A) Pragmatikus KISS + „move-fast” prototipizálás; minimalista util / UNIX-szerű „kis eszköz” szemlélet. A tömörség és egyszerűség elsődleges; a guardok és „keményítés” később, célzottan kerüljenek be.
 
-4 KÓDOLÁSI PREFERENCIÁK
+3 KÓDOLÁSI PREFERENCIÁK
 
 A) Rövidzáras feltételek: egyszerű, egyutasításos esetekben használd az isnothing(x) || do_sg() / cond && action() mintát. Ha több utasítást kell feltételesen végrehajtani, használj if … end szerkezetet. Ne keverd === nothing-nel; az isnothing(x) a preferált.
 
