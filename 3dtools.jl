@@ -75,20 +75,12 @@ end
 # 30°-os hue → név hozzárendelés (0,30,…,330)
 const HUE30_NAMES = Dict{Int,Symbol}(0=>:red, 30=>:orange, 60=>:yellow, 90=>:chartreuse, 120=>:green, 150=>:springgreen, 180=>:cyan, 210=>:dodgerblue, 240=>:blue, 270=>:indigo, 300=>:magenta, 330=>:deeppink)
 
-# Közép-hue alapján 1×3 textúra (neg, mid, pos).
-# Szabály: ha h_mid osztható 60-nal → Δ=60°, különben Δ=30°.
-function rr_texture_from_hue(h_mid::Float32; s::Float32=1f0, v::Float32=1f0)
-    Δ::Float32 = (h_mid % 60f0 == 0f0) ? 60f0 : 30f0
-    return reshape(RGBAf[RGBAf(HSV(h_mid-Δ, s, v)), RGBAf(HSV(h_mid, s, v)), RGBAf(HSV(h_mid+Δ, s, v))], 3, 1)
-end
-
 # Atlasz 12 közép-hue-hoz; oszlopok r∈[0,1] (parts+1), sorok: neg/mid/pos.
-function exp_rr_texture_from_hue(parts::Integer; s::Float32=1f0, v::Float32=1f0) 
-    @assert parts ≥ 1 "parts legyen ≥ 1"
-    ncols = Int(parts) + 1  # parts=20 → 21
+function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32; s::Float32=1f0, v::Float32=1f0) 
+    ncols = Int(floor(RR_MAX / RR_STEP)) + 1
     rvals = collect(LinRange(0f0, 1f0, ncols))  # r lépcsők 0..1 között, egyenletes rács (N = parts+1)
     hs    = Float32.(0:30:330)               # 12 közép-hue (fok): 0°,30°,…,330°
-    atlas = Matrix{RGBAf}(undef, 3, ncols * length(hs))
+    atlas = Matrix{RGBAf}(undef, 3, ncols * 12)  # 3B: inline length(hs)
 
     @inbounds for (i, hmid) in enumerate(hs)
         Δ::Float32 = (mod(hmid, 60f0) == 0f0) ? 60f0 : 30f0  # Δ (fok): 60°, ha h_mid % 60 == 0; különben 30°
@@ -104,5 +96,5 @@ function exp_rr_texture_from_hue(parts::Integer; s::Float32=1f0, v::Float32=1f0)
             atlas[3, col] = RGBAf(HSV(mod(hpos, 360f0), s, v))  # sor3: pos (vöröselt) – HSV→RGBAf, 360°-ra modolva
         end
     end
-    return atlas  # pl. parts=20 → 3 × ((20+1)*12) = 3 × 252
+    return atlas, ncols, ncols * 12  # pl. parts=20 → 3 × ((20+1)*12) = 3 × 252
 end

@@ -102,8 +102,6 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     empty!(world.sources)
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
-    ncols    = gctx.ncols # hue-blokkonkenti oszlopszam
-    cols_all = gctx.cols  # atlasz teljes oszlopszama
     for (i, spec) in enumerate(PRESET_TABLE[preset])
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
@@ -111,6 +109,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
 
         # aktuális hue blokk index (1..12) a RR csúszkához
         cur_h_ix = Ref(1)
+        cur_rr_offset = Ref(Float32(clamp(spec.RR, 0.0, RR_MAX)))  # RR offset 0..RR_MAX
 
         # hue row (DISCRETE 0..330° step 30°)
         let h_vals = collect(0:30:330),
@@ -120,15 +119,15 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                          ix = findfirst(==(sel), labels)
                          cur_h_ix[] = ix
                          # Atlas blokkszélesség és oszlop kiválasztása (középső oszlop)
-                          cols_all = size(gctx.atlas, 2) ## mindig 252
-                         ncols    = Int(cols_all ÷ length(h_vals)) # mindig 21
+                          #cols_all = size(gctx.atlas, 2) ## mindig 252
+                         #ncols    = Int(cols_all ÷ length(h_vals)) # mindig 21
                          #col_in   = clamp(Int(floor(ncols/2)), 1, ncols)
-                         abscol   = (ix - 1) * ncols# + col_in
-                         u0 = Float32((abscol - 1) / cols_all)
-                         sx = 1f0 / Float32(cols_all)
+                        abscol   = (ix - 1) * gctx.ncols# + col_in
+                        u0 = Float32((abscol - 1) / gctx.cols)
+                        sx = 1f0 / Float32(gctx.cols)
                          uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
                          src.plot[:uv_transform][] = uvtr
-                         @info "Hue→atlas oszlop" source=i hue=h_vals[ix] cols_all=cols_all ix=ix abscol=abscol ncols=ncols col_in=col_in
+                         #@info "Hue→atlas oszlop" source=i hue=h_vals[ix] cols_all=cols_all ix=ix abscol=abscol ncols=ncols col_in=col_in
                      end)
         end
 

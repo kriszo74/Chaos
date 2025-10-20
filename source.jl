@@ -86,11 +86,18 @@ function update_source_RV(RV::Float64, src::Source, world)
     src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
 end
 
+# UV oszlop indexből uv_transform frissítése
+function update_source_uv!(abscol::Int, src::Source, gctx)
+    u0 = Float32((abscol - 1) / gctx.cols)  # 1-alapú oszlop → u offset
+    sx = 1f0 / Float32(gctx.cols)           # egy oszlop szélessége u-ban
+    uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
+    src.plot[:uv_transform][] = uvtr
+end
+
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
-function update_source_RR(new_RR::Float64, src::Source; mid=RGBAf(0.5,0.5,0.5,1), red=RGBAf(1,0,0,1), blue=RGBAf(0,0,1,1))
+function update_source_RR(new_RR::Float64, src::Source, gctx, abscol::Int)
     src.RR = new_RR
-    tex = reshape(RGBAf[red, mid, blue], 3, 1)  # 1×3 textúra
-    src.plot[:color][] = tex
+    update_source_uv!(abscol, src, gctx)
     return src
 end
 

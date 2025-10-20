@@ -1,5 +1,3 @@
-# ---- main.jl ----
-
 using GLMakie
 GLMakie.activate!(; focus_on_show=true, title="Chaos")
 #GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
