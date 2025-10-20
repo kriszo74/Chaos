@@ -5,8 +5,9 @@ A) Csak sebészi módosítás engedélyezett:
 - Nincs újrafogalmazás, nincs tartalmi bővítés.
 - A meglévő sorokat, bekezdéseket, struktúrát meg kell őrizni.
 
-B) Minden módosítás előtt előzetes egyeztetés szükséges
-- Kivétel: ha a prompt ACK: előtaggal indul
+B) Műveleti jelzők: 
+- ACK = módosítás engedélyezése; 
+- NOP = nincs módosítás, csak egyeztetés.
 
 C) Egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti; továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett, de soha sem az utasítás sor előtt. Legyen tömör (≤100 karakter). Ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
 

@@ -1,4 +1,4 @@
-﻿# ---- gui.jl ----
+# ---- gui.jl ----
 
 # --- GUI context: központi állapot/erőforrás-csomag ---
 # Közösen használt GUI/Render elemek csomagja; később függvények között adjuk át.
@@ -8,6 +8,8 @@ mutable struct GuiCtx
     gl::GridLayout         # bal oldali vezérlőpanel
     sources_gl::GridLayout # forrás-panelek rácsa
     atlas::Matrix{RGBAf}   # RR-színatlasz (3 x N)
+    ncols::Int             # hue-blokkonkenti oszlopszam
+    cols::Int              # atlasz teljes oszlopszama
     marker::GeometryBasics.Mesh            # UV‑gömb marker (GeometryBasics.Mesh)
 end
 
@@ -52,6 +54,8 @@ end
 # GUI konstansok (NFC)
 # TODO: Minden konstans (GUI_COL_W, PRESET_ORDER, REF_NONE, PRESET_TABLE, stb.) külső fájlból legyen betöltve (pl. TOML/JSON). Ideiglenesen hardcode.
 const GUI_COL_W = 220
+const RR_MAX = 2.0
+const RR_STEP = 0.1
 # ÚJ: egységes sebességskálázó (a fő RV hossz). A további forrásoknál ebből képzünk vektort.
 const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
 
@@ -96,9 +100,10 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     trim!(gctx.sources_gl)                      # üres sor/oszlop levágása
 
     empty!(world.sources)
-    tex = rr_texture_from_hue(0f0)
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
+    ncols    = gctx.ncols # hue-blokkonkenti oszlopszam
+    cols_all = gctx.cols  # atlasz teljes oszlopszama
     for (i, spec) in enumerate(PRESET_TABLE[preset])
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
@@ -115,15 +120,15 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                          ix = findfirst(==(sel), labels)
                          cur_h_ix[] = ix
                          # Atlas blokkszélesség és oszlop kiválasztása (középső oszlop)
-                          cols_all = size(gctx.atlas, 2)
-                         ncols    = Int(cols_all ÷ length(h_vals))
-                         col_in   = clamp(Int(floor(ncols/2)), 1, ncols)
-                         abscol   = (ix - 1) * ncols + col_in
+                          cols_all = size(gctx.atlas, 2) ## mindig 252
+                         ncols    = Int(cols_all ÷ length(h_vals)) # mindig 21
+                         #col_in   = clamp(Int(floor(ncols/2)), 1, ncols)
+                         abscol   = (ix - 1) * ncols# + col_in
                          u0 = Float32((abscol - 1) / cols_all)
                          sx = 1f0 / Float32(cols_all)
                          uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
                          src.plot[:uv_transform][] = uvtr
-                         @info "Hue→atlas oszlop" source=i hue=h_vals[ix] ix=ix abscol=abscol ncols=ncols
+                         @info "Hue→atlas oszlop" source=i hue=h_vals[ix] cols_all=cols_all ix=ix abscol=abscol ncols=ncols col_in=col_in
                      end)
         end
 
@@ -139,14 +144,14 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    onchange = v -> update_source_RV(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:0.1:2.0;
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX;
                    startvalue = clamp(spec.RR, 0.0, 2.0),
                    onchange = v -> begin
                        src.RR = v  # opcionális, a világállapot kedvéért (0..2)
                         cols_all = size(gctx.atlas, 2)
                        ncols    = Int(cols_all ÷ 12)   # parts=20 → ncols=21
                        # 0..2 → 0..1 normalizálás (21 oszlop lefedése)
-                       r = clamp(Float32(v) / 2f0, 0f0, 1f0)
+                       r = clamp(Float32(v) / Float32(RR_MAX), 0f0, 1f0)
                        col_in = clamp(1 + round(Int, r * (ncols - 1)), 1, ncols)
                        abscol = (cur_h_ix[] - 1) * ncols + col_in
                        u0 = Float32((abscol - 1) / cols_all)
@@ -180,7 +185,7 @@ end
 # GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
 
 function setup_gui!(fig, scene, world::World, rt::Runtime)
-    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), exp_rr_texture_from_hue(20), create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
+    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(RR_MAX), Float32(RR_STEP))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
     fig[1, 1] = gctx.gl = GridLayout() # Setting panel
     gctx.gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(GUI_COL_W))  # keskeny GUI-oszlop
