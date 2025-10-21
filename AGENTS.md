@@ -4,6 +4,7 @@ A) Csak sebészi módosítás engedélyezett:
 - TÖRLÉS vagy PONTOS CSERE megengedett.
 - Nincs újrafogalmazás, nincs tartalmi bővítés.
 - A meglévő sorokat, bekezdéseket, struktúrát meg kell őrizni.
+- Kövesd az .editorconfig kódolási/sorvég beállításait (UTF-8, CRLF).
 
 B) Műveleti jelzők: 
 - ACK = módosítás engedélyezése; 
