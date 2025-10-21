@@ -9,6 +9,13 @@ using Observables  # Observable támogatás
 # rendszer-paraméterek
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
+
+# Debug-only assert macro (0 overhead in release)
+macro dbg_assert(cond, msg="")
+    return :(@static if DEBUG_MODE
+        @assert $(esc(cond)) $(esc(msg))
+    end)
+end
 struct Runtime
     sim_task::Observable{Union{Nothing,Task}}
     paused::Observable{Bool}
