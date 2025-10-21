@@ -1,12 +1,12 @@
-using GLMakie
+﻿using GLMakie
 GLMakie.activate!(; focus_on_show=true, title="Chaos")
-#GLMakie.activate!(; focus_on_show=true)  # kérjen fókuszt megjelenítéskor (display előtt kell lennie)
+#GLMakie.activate!(; focus_on_show=true)  # kĂ©rjen fĂłkuszt megjelenĂ­tĂ©skor (display elĹ‘tt kell lennie)
 #GLMakie.set_window_config!(; title = "Chaos") # ezek menjenek a setup_scene() -be.
 using StaticArrays
 using GeometryBasics
-using Observables  # Observable támogatás
+using Observables  # Observable tĂˇmogatĂˇs
 
-# rendszer-paraméterek
+# rendszer-paramĂ©terek
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
 
@@ -24,8 +24,8 @@ end
 
 rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
 
-include("source.jl") # forrás‑logika
-mutable struct World # világállapot
+include("source.jl") # forrĂˇsâ€‘logika
+mutable struct World # vilĂˇgĂˇllapot
     E::Float64
     density::Float64
     max_t::Float64
@@ -33,16 +33,16 @@ mutable struct World # világállapot
     sources::Vector{Source}
 end
 
-world = World(3.0, 1.0, 10.0, Observable(0.0), Source[]) # világállapot inicializálás
+world = World(3.0, 1.0, 10.0, Observable(0.0), Source[]) # vilĂˇgĂˇllapot inicializĂˇlĂˇs
 
-# jelenet beállítása
+# jelenet beĂˇllĂ­tĂˇsa
 include("3dtools.jl")
 fig, scene = setup_scene()
 
 include("gui.jl")
 setup_gui!(fig, scene, world, rt)
 
-# ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
+# ĂšJ: gomb-indĂ­tĂˇsĂş szimulĂˇciĂł kĂĽlĂ¶n feladatban  # MOVED: init fent (GUI elĹ‘tt)
 function start_sim!(fig, scene, world::World, rt::Runtime)
     rt.sim_task[] = @async begin
         dt = target = 1/60
@@ -65,7 +65,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
     end
 end
 
-screen = display(fig)  # ablak megjelenítése (screen visszaadva)
-zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
-isinteractive() || wait(screen) # F5 (nem interaktív) futásnál blokkoljunk az ablak bezárásáig
+screen = display(fig)  # ablak megjelenĂ­tĂ©se (screen visszaadva)
+zoom!(scene.scene, 1.5)  # csak display(fig) utĂˇn mĹ±kĂ¶dik.
+isinteractive() || wait(screen) # F5 (nem interaktĂ­v) futĂˇsnĂˇl blokkoljunk az ablak bezĂˇrĂˇsĂˇig
 
