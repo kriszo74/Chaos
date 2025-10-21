@@ -28,12 +28,6 @@ function add_source!(world, scene, src::Source, gctx; abscol::Union{Nothing,Int}
      # Marker: lat‑long gömb UV‑val
     marker_mesh = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0)
 
-cols = size(src.color, 2)
-    col  = min(10, cols)                 # demo: 10. oszlop, ha kevesebb van, akkor az utolsó
-    u0   = (col - 1) / cols              # offset a 2. (v) komponens mentén
-    sx   = 1f0 / cols                    # oszlopszélesség
-    uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
-
     # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
     ph = meshscatter!(scene, src.positions;
         marker       = marker_mesh,             # UV-s gömb marker
@@ -93,13 +87,9 @@ function calculate_source_uv(abscol::Int, gctx)
     sx = 1f0 / Float32(gctx.cols)
     return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
 end
+
 function update_source_uv!(abscol::Int, src::Source, gctx)
-    src.plot[:uv_transform][] = calculate_source_uv(abscol, gctx) # prefer helper
-    return
-    u0 = Float32((abscol - 1) / gctx.cols)  # 1-alapú oszlop → u offset
-    sx = 1f0 / Float32(gctx.cols)           # egy oszlop szélessége u-ban
-    uvtr = Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
-    src.plot[:uv_transform][] = uvtr
+    src.plot[:uv_transform][] = calculate_source_uv(abscol, gctx)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
