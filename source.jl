@@ -1,4 +1,4 @@
-﻿# ---- source.jl ----
+# ---- source.jl ----
 
 # Forrás típus és műveletek – GUI‑független logika
 
@@ -15,32 +15,25 @@ mutable struct Source
     plot::Any                    # plot handle
 end
 
-# add_source!: forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-# NOTE: a 'world' típust itt sem annotáljuk (körkörös függés elkerülése – World a main.jl-ben).
-# Lépések: sugarpuffer és pozíciósor előkészítése → forrás regisztrálása → UV-s marker + 1×N RR‑textúra → instancing.
-function add_source!(world, scene, src::Source, gctx; abscol::Union{Nothing,Int}=nothing)
+# forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
+function add_source!(world, src::Source, gctx; abscol::Int)
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
-    src.positions = [Point3d(src.act_p...)]                    # horgony: első pont a kiinduló pozíció
-    src.positions = update_positions(N, src, world)            # kezdeti pozíciósor generálása aktuális RV-vel
+    src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció
+    src.positions = update_positions(N, src, world)          # kezdeti pozíciósor generálása aktuális RV-vel
     push!(world.sources, src)
 
-     # Marker: lat‑long gömb UV‑val
-    marker_mesh = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0)
-
-    # UV-t tükrözzük Y-ban, mert a textúra sorindexe (0→n) a déli→északi irányt adta
-    ph = meshscatter!(scene, src.positions;
-        marker       = marker_mesh,             # UV-s gömb marker
+    # UV-s marker és RR textúra alkalmazása
+    src.plot = meshscatter!(gctx.scene, src.positions;
+        marker       = gctx.marker,            # UV-s gömb marker
         markersize   = src.radii,              # példányonkénti sugárvektor
-        color        = src.color,                    # textúra (Matrix{RGBAf})
-        uv_transform = isnothing(abscol) ? I : calculate_source_uv(abscol, gctx),              # DEMÓ: atlasz 10. oszlop kivágása
-        rotation     = Vec3f(0.0, pi/4, 0.0),  # (új)) radián (x, y, z) TODO: mesh módosítása, hogy ne kelljen alaprotáció.
+        color        = src.color,              # textúra (Matrix{RGBAf})
+        uv_transform = calculate_source_uv(abscol, gctx), # UV‑atlasz oszlop kiválasztása 
+        rotation     = Vec3f(0.0, pi/4, 0.0),  # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
         transparency = true,                   # átlátszóság engedélyezve
         alpha        = src.alpha,              # átlátszóság mértéke
-        interpolate  = true,                   # (új) textúrainterpoláció bekapcsolva
-        shading      = true)                   # (új) fény-árnyék aktív
-
-    src.plot = ph
+        interpolate  = true,                   # textúrainterpoláció bekapcsolva
+        shading      = true)                   # fény-árnyék aktív
     return src
 end
 

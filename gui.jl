@@ -109,7 +109,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         cur_h_ix = Ref(1)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # 1-based offset within hue-block
         abscol = (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[]
-        add_source!(world, gctx.scene, src, gctx; abscol=abscol)
+        add_source!(world, src, gctx; abscol=abscol)
 
         # hue row (DISCRETE 0..330° step 30°)
         let h_vals = collect(0:30:330),
