@@ -15,6 +15,7 @@ C) Műveleti jelzők:
 D) Parancsprotokoll (ACK/NOP + célzás):
 - `ACK:PAR` = hajtsd végre a parancsot kérdés nélkül az irányelvek szerint.
 - `ACK:KOM` = alkalmazd a kommentelési szabályokat; fésüld át és írd át.
+- `ACK:KOM:COL` = alparancs, pl. kommentek oszlopba rendezése blokkon belül (azonos oszlopra igazítva).
 - Opcionális szűkítés: `ACK:KOM source.jl` csak a megadott fájlra.
 - További szűkítés: `ACK:KOM add_source!` csak a megadott azonosítóra.
 - Tartomány: `ACK:KOM source.jl 31:41` csak a megadott sorokra.
@@ -22,13 +23,15 @@ D) Parancsprotokoll (ACK/NOP + célzás):
 
 2 KÓDOLÁSI SZABÁLYOK, PARANCSOK
 
-A) KOM - Kommentelési szabályok: 
-- magyarul kommentelj, ne tedd a prancskódot (KOM) a kommentbe.
+A) KOM - Kommentelési szabályok:
+- magyarul kommentelj, ne tedd a parancskódot (KOM) a kommentbe.
 - korábbi kommenteket is módosíthatod, átfogalmazhatod.
 - legyen tömör (≤100 karakter);
-- egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti; 
+- egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti;
 - továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett.
 - ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
+- ahol ezt találod: <# kom>, oda írj egy találó kommentet.
+- blokkon belül a kommenteket egy oszlopba rendezd (azonos oszlopba igazítva).
 
 B) Rövidzáras feltételek: egyszerű, egyutasításos esetekben használd az isnothing(x) || do_sg() / cond && action() mintát. Ha több utasítást kell feltételesen végrehajtani, használj if … end szerkezetet. Ne keverd === nothing-nel; az isnothing(x) a preferált.
 
@@ -43,3 +46,4 @@ F) Observable‑kötések: általános helper(ek)be szervezve, opcionális param
 G) GRD - Felesleges guardok kerülése: ha az értéktartományt a flow garantálja, ne tegyél @isdefined-et és ne clampelj; lásd 3 C).
 
 H) LAN - Láncolt értékadás: használd rövid, mellékhatás‑mentes inicializálásoknál; pl. fig[1,1] = gl = GridLayout(). A kifejezés jobbra asszociatív, ezért ekvivalens a gl = GridLayout(); fig[1,1] = gl formával. Mellékhatásos vagy több lépcsős hívások láncolását kerüld, mert nehezíti a debuggolást.
+
