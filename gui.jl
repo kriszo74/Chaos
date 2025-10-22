@@ -19,7 +19,6 @@ function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected
     grid[row, 2:3] = menu = Menu(fig, options = options)
     isnothing(selected_index) || (menu.i_selected[] = selected_index::Int)
     isnothing(onchange) || on(menu.selection) do sel; onchange(sel); end
-
     return menu
 end
 
@@ -45,7 +44,6 @@ end
 function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
     grid[row, 1:colspan] = btn = Button(fig, label = label)
     isnothing(onclick) || on(btn.clicks) do _; onclick(btn); end
-
     return btn
 end
 
@@ -58,6 +56,7 @@ const RR_MAX = 2.0
 const RR_STEP = 0.1
 # ÚJ: egységes sebességskálázó (a fő RV hossz). A további forrásoknál ebből képzünk vektort.
 const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
+const HUE30_LABELS = [string(HUE30_NAMES[h], " (", h, Char(176), ")") for h in 0:30:330]
 
 # Ref‑választó állapot (globális, egyszerű tároló)
 const REF_NONE = 0
@@ -76,7 +75,7 @@ const ref_choice = Ref(Int[])
 
 const PRESET_TABLE = Dict(
     "Single" => [
-        (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0, pitch_deg=0.0),
+        (color=:cyan,    RV=2.0, RR=2.0, ref=nothing, distance=0.0, yaw_deg=0.0, pitch_deg=0.0),
     ],
     "Dual (2)" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0, pitch_deg=0.0),
@@ -91,39 +90,31 @@ const PRESET_TABLE = Dict(
     ],
 )
 
-# 
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset::String)
-    rt.paused[] = true  # rebuild közben álljunk meg
-    empty!(gctx.scene)                          # teljes újraépítés
-    foreach(delete!, contents(gctx.sources_gl))  
-    trim!(gctx.sources_gl)                      # üres sor/oszlop levágása
+    rt.paused[] = true      # rebuild közben álljunk meg
+    empty!(gctx.scene)      # teljes újraépítés
+    foreach(delete!, contents(gctx.sources_gl))  # forráspanel elemeinek törlése
+    trim!(gctx.sources_gl)  # üres sor/oszlop levágása
+    empty!(world.sources)   # forráslista ürítése
 
-    empty!(world.sources)
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
+        cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
+        cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
-        # aktuális hue blokk index (1..12) és kezdeti RR offset (1..ncols)
-        cur_h_ix = Ref(1)
-        cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # 1-based offset within hue-block
-        abscol = (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[]
-        add_source!(world, src, gctx; abscol=abscol)
+        add_source!(world, src, gctx; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
-        let h_vals = collect(0:30:330),
-            labels = [string(HUE30_NAMES[h], " (", h, "°)") for h in h_vals]
-            mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", labels;
-                     onchange = sel -> begin
-                         ix = findfirst(==(sel), labels)
-                         cur_h_ix[] = ix
-                      abscol = (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[]
-                      update_source_uv!(abscol, src, gctx)
-                     end)
-        end
+        mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
+                    onchange = sel -> begin
+                    cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
+                    update_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
+                    end)
 
-    # alpha row (ALWAYS)
+        # alpha row (ALWAYS)
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
                    startvalue = src.alpha,
                    onchange = v -> (src.alpha = v),
@@ -135,14 +126,11 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    onchange = v -> update_source_RV(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX;
-                   startvalue = clamp(spec.RR, 0.0, 2.0),
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX; startvalue = spec.RR,
                    onchange = v -> begin
                        cur_rr_offset[] = 1 + round(Int, v / RR_STEP)
-                       abscol = (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[]
-                       update_source_RR(v, src, gctx, abscol)
+                       update_source_RR(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
                    end)
-
 
         # Csak referencia esetén: distance / yaw / pitch – TODO: live update
         if spec.ref !== nothing
@@ -162,10 +150,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     colsize!(gctx.sources_gl, 3, Relative(0.15))
 end
 
-
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
-# GUI főpanel felépítése (bal vezérlők + jobb 3D jelenet)
-
 function setup_gui!(fig, scene, world::World, rt::Runtime)
     gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(RR_MAX), Float32(RR_STEP))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
     fig[1, 1] = gctx.gl = GridLayout() # Setting panel
@@ -183,7 +168,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                     onchange = v -> (world.E = v))
 
     # Aktuális preset és t állapot a GUI-ban
-    presets = collect(PRESET_ORDER)
+    presets = collect(PRESET_ORDER) #TODO: setup_gui! ne kezeljen PRESET-et. rebuild_sources_panel! kezelje, ha null-t kap.
     current_preset = Ref(first(presets))
     # Preset választó (fent tartjuk, mint eddig)
     preset_menu = mk_menu!(fig, gctx.gl, 2, "Preset", presets; selected_index = 1,
@@ -194,9 +179,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                                apply_time!(world)
                            end)
 
-    # Dinamikus Sources panel
-
-    rebuild_sources_panel!(gctx, world, rt, first(presets))
+    rebuild_sources_panel!(gctx, world, rt, first(presets)) # Dinamikus Sources panel
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
     sDensity = mk_slider!(fig, gctx.gl, 6, "density", 0.5:0.5:20.0;
