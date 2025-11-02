@@ -1,8 +1,3 @@
-# ---- 3dtools.jl ----
-
-using Colors
-
-
 # Gömbfelület generálása (lat–long rács, előallokálva)
 function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
     @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
@@ -63,6 +58,7 @@ end
 
 # Jelenet (Scene) létrehozása – ortografikus kamera
 function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
+    GLMakie.activate!(; focus_on_show=true, title="Chaos")
     fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)
     scene = LScene(fig[1, 1], show_axis = false)
     cam3d!(scene; projectiontype = :orthographic,

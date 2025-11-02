@@ -1,5 +1,3 @@
-# ---- gui.jl ----
-
 # --- GUI context: központi állapot/erőforrás-csomag ---
 # Közösen használt GUI/Render elemek csomagja; később függvények között adjuk át.
 mutable struct GuiCtx
@@ -10,7 +8,7 @@ mutable struct GuiCtx
     atlas::Matrix{RGBAf}   # RR-színatlasz (3 x N)
     ncols::Int             # hue-blokkonkenti oszlopszam
     cols::Int              # atlasz teljes oszlopszama
-    marker::GeometryBasics.Mesh            # UV‑gömb marker (GeometryBasics.Mesh)
+    marker::GeometryBasics.Mesh  # UV‑gömb marker (GeometryBasics.Mesh)
 end
 
 # mk_menu!: label + legördülő + onchange callback

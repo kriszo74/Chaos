@@ -1,5 +1,3 @@
-# ---- source.jl ----
-
 # Forrás típus és műveletek – GUI‑független logika
 
 # Source: mozgás és megjelenítési adatok
@@ -72,7 +70,6 @@ function update_source_RV(RV::Float64, src::Source, world)
     _, src.RV = calculate_coordinates(world, src, RV, 0.0, 0.0, 90.0)
     src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
 end
-
 
 # UV oszlop indexből uv_transform kiszámítása
 function calculate_source_uv(abscol::Int, gctx)
