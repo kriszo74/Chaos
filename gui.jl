@@ -99,8 +99,12 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
+        dist_ref  = Ref(spec.distance)  # relatív távolság állapota (Ref)
+        yaw_ref   = Ref(spec.yaw_deg)   # relatív azimut állapota (Ref)
+        pitch_ref = Ref(spec.pitch_deg) # relatív eleváció állapota (Ref)
         cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
+
         pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
         add_source!(world, src, gctx; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
@@ -121,7 +125,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         # RV (skálár) – LIVE recompute
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
-                   onchange = v -> update_source_RV(v, world.sources[i], world))
+                   onchange = v -> rescale_RV_vec(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX; startvalue = spec.RR,
@@ -130,17 +134,26 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        update_source_RR(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
                    end)
 
-        # Csak referencia esetén: distance / yaw / pitch – TODO: live update
+        # Csak referencia esetén: distance / yaw / pitch – live update Reffel
         if spec.ref !== nothing
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
                        startvalue = spec.distance,
-                       onchange = _ -> nothing)  # TODO
+                       onchange = v -> begin
+                           dist_ref[] = v
+                           update_distance(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                       end)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
-                       onchange = _ -> nothing)  # TODO
+                       onchange = v -> begin
+                           yaw_ref[] = v
+                           update_yaw_pitch(yaw_ref[], pitch_ref[], src, world, world.sources[spec.ref], dist_ref[])
+                       end)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
-                       onchange = _ -> nothing)  # TODO
+                       onchange = v -> begin
+                           pitch_ref[] = v
+                           update_yaw_pitch(yaw_ref[], pitch_ref[], src, world, world.sources[spec.ref], dist_ref[])
+                       end)
         end
     end
     colsize!(gctx.sources_gl, 1, Relative(0.35))

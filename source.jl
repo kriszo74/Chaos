@@ -65,10 +65,33 @@ end
 
 # RV skálár frissítése + positions újragenerálása (irány megtartása)
 # Paraméterek: RV (nagyság), src (forrás), world (világállapot)
-function update_source_RV(RV::Float64, src::Source, world)
-    # irány megtartása: pitch=90°, distance=0, yaw=0 → dir == u
-    _, src.RV = calculate_coordinates(world, src, RV, 0.0, 0.0, 90.0)
+function rescale_RV_vec(RV::Float64, src::Source, world)
+    # irány megtartása: aktuális RV normalizálása és skálázása
+    u = src.RV / sqrt(sum(abs2, src.RV))
+    src.RV = u * RV
     src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
+end
+
+# distance frissítése referencia alapján; RV nem változik
+function update_distance(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+    pos, _ = calculate_coordinates(world, ref_src, sqrt(sum(abs2, src.RV)), distance, yaw_deg, pitch_deg)
+    apply_pose!(src, world, pos)
+end
+
+# yaw/pitch frissítése referencia alapján; RV iránya követi, nagysága marad
+function update_yaw_pitch(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source, distance::Float64)
+    rv_mag = sqrt(sum(abs2, src.RV))
+    pos, RVv = calculate_coordinates(world, ref_src, rv_mag, distance, yaw_deg, pitch_deg)
+    src.RV = RVv
+    apply_pose!(src, world, pos)
+end
+
+# Pozíció alkalmazása: act_p, pálya és plot frissítése
+function apply_pose!(src::Source, world, pos)
+    src.act_p = pos
+    src.positions[1] = Point3d(pos...)
+    src.positions = update_positions(length(src.positions), src, world)
+    src.plot[:positions][] = src.positions
 end
 
 # UV oszlop indexből uv_transform kiszámítása
