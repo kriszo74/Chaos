@@ -123,7 +123,7 @@ function calculate_coordinates(world,
                                yaw_deg::Float64,
                                pitch_deg::Float64)
     isnothing(src) && return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
-    ref_pos = src.act_p
+    ref_pos = SVector(src.positions[1]...)
     ref_RV  = src.RV
 
     # u: ref_RV irány egységvektor
