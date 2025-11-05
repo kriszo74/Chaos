@@ -86,6 +86,37 @@ function update_yaw_pitch(yaw_deg::Float64, pitch_deg::Float64, src::Source, wor
     apply_pose!(src, world, pos)
 end
 
+# RV irányának külön állítása (pozíció változatlan)
+function update_RV_yaw_pitch(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
+    rv_mag = sqrt(sum(abs2, src.RV))
+
+    # u: ref_RV irány egységvektor
+    ref_RV = ref_src.RV
+    u = ref_RV / sqrt(sum(abs2, ref_RV))
+
+    # stabil referencia a merőleges bázishoz
+    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
+    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz
+
+    # síkbázis ref_RV-re merőlegesen
+    e2p = refv - (sum(refv .* u)) * u
+    e2  = e2p / sqrt(sum(abs2, e2p))
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # u × e2
+
+    # fok → radián
+    yaw   = yaw_deg   * (pi/180)
+    pitch = pitch_deg * (pi/180)
+
+    # irányvektor yaw/pitch szerint (pitch 0° = Π₀, +pitch az u felé)
+    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u
+    dir = dir / sqrt(sum(abs2, dir))
+
+    # csak az RV irányát állítjuk; pozíció horgony marad
+    src.RV = rv_mag * dir
+    src.positions = update_positions(length(src.positions), src, world)
+    src.plot[:positions][] = src.positions
+end
+
 # Pozíció alkalmazása: act_p, pálya és plot frissítése
 function apply_pose!(src::Source, world, pos)
     src.act_p = pos

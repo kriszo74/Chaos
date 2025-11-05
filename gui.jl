@@ -102,6 +102,8 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         dist_ref  = Ref(spec.distance)  # relatív távolság állapota (Ref)
         yaw_ref   = Ref(spec.yaw_deg)   # relatív azimut állapota (Ref)
         pitch_ref = Ref(spec.pitch_deg) # relatív eleváció állapota (Ref)
+        rv_yaw_ref   = Ref(0.0)         # RV azimut [°] (Ref)
+        rv_pitch_ref = Ref(0.0)         # RV eleváció [°] (Ref)
         cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
 
@@ -153,6 +155,20 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        onchange = v -> begin
                            pitch_ref[] = v
                            update_yaw_pitch(yaw_ref[], pitch_ref[], src, world, world.sources[spec.ref], dist_ref[])
+                       end)
+
+            # RV irány – kézi yaw/pitch (pozíció nem változik)
+            mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV yaw $(i) [°]", -180:5:180;
+                       startvalue = 0.0,
+                       onchange = v -> begin
+                           rv_yaw_ref[] = v
+                           update_RV_yaw_pitch(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                       end)
+            mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
+                       startvalue = 0.0,
+                       onchange = v -> begin
+                           rv_pitch_ref[] = v
+                           update_RV_yaw_pitch(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
         end
     end
