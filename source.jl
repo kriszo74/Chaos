@@ -73,16 +73,11 @@ function rescale_RV_vec(RV::Float64, src::Source, world)
 end
 
 # distance frissítése referencia alapján; RV nem változik
-function update_distance(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    pos, _ = calculate_coordinates(world, ref_src, sqrt(sum(abs2, src.RV)), distance, yaw_deg, pitch_deg)
-    apply_pose!(src, world, pos)
-end
-
-# yaw/pitch frissítése referencia alapján; RV iránya követi, nagysága marad
-function update_yaw_pitch(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source, distance::Float64)
-    rv_mag = sqrt(sum(abs2, src.RV))
-    pos, RVv = calculate_coordinates(world, ref_src, rv_mag, distance, yaw_deg, pitch_deg)
-    src.RV = RVv
+function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+    # relatív irány a ref RV tengelyéhez mérve
+    ref_pos = SVector(ref_src.positions[1]...)
+    dir = compute_dir(ref_src, yaw_deg, pitch_deg)
+    pos = ref_pos + distance * dir
     apply_pose!(src, world, pos)
 end
 
@@ -125,6 +120,21 @@ function apply_pose!(src::Source, world, pos)
     src.plot[:positions][] = src.positions
 end
 
+# irányvektor számítása a ref_src RV tengelyéhez képest adott yaw/pitch alapján
+function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+    ref_RV = ref_src.RV
+    u = ref_RV / sqrt(sum(abs2, ref_RV))
+    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
+    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz
+    e2p = refv - (sum(refv .* u)) * u
+    e2  = e2p / sqrt(sum(abs2, e2p))
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])
+    yaw   = yaw_deg   * (pi/180)
+    pitch = pitch_deg * (pi/180)
+    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u
+    return dir / sqrt(sum(abs2, dir))
+end
+
 # UV oszlop indexből uv_transform kiszámítása
 function calculate_source_uv(abscol::Int, gctx)
     @dbg_assert(1 <= abscol <= gctx.cols, "abscol out of range")
@@ -143,40 +153,3 @@ function update_source_RR(new_RR::Float64, src::Source, gctx, abscol::Int)
     update_source_uv!(abscol, src, gctx)
     return src
 end
-
-# Koordináták számítása referenciaként adott src alapján
-# - src == nothing → pos=(0,0,0), RV_vec=(RV,0,0)
-# - különben a src aktuális akt_p/RV értékeihez képest yaw/pitch szerint számol
-function calculate_coordinates(world,
-                               src::Union{Nothing,Source},
-                               RV::Float64,
-                               distance::Float64,
-                               yaw_deg::Float64,
-                               pitch_deg::Float64)
-    isnothing(src) && return SVector(0.0, 0.0, 0.0), SVector(RV, 0.0, 0.0)
-    ref_pos = SVector(src.positions[1]...)
-    ref_RV  = src.RV
-
-    # u: ref_RV irány egységvektor
-    u = ref_RV / sqrt(sum(abs2, ref_RV))
-    # stabil referencia a merőleges bázishoz
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
-    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz
-    # síkbázis ref_RV-re merőlegesen
-    e2p = refv - (sum(refv .* u)) * u
-    e2  = e2p / sqrt(sum(abs2, e2p))
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # u × e2
-
-    # fok → radián
-    yaw   = yaw_deg   * (pi/180)
-    pitch = pitch_deg * (pi/180)
-
-    # irányvektor yaw/pitch szerint (pitch 0° = Π₀, +pitch az u felé)
-    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u
-    dir = dir / sqrt(sum(abs2, dir))
-
-    pos    = ref_pos + distance * dir
-    RV_vec = RV * dir
-    return pos, RV_vec
-end
-

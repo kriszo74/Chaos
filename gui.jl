@@ -107,7 +107,16 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
 
-        pos, RV_vec = calculate_coordinates(world, isnothing(spec.ref) ? nothing : world.sources[spec.ref], spec.RV, spec.distance, spec.yaw_deg, spec.pitch_deg)
+        if isnothing(spec.ref) #TODO: PRESET-ből jöjjön ez is.
+            pos = SVector(0.0, 0.0, 0.0)
+            dir = SVector(1.0, 0.0, 0.0) # alap irány X tengely
+        else
+            ref_src = world.sources[spec.ref]
+            ref_pos = SVector(ref_src.positions[1]...)
+            dir = compute_dir(ref_src, spec.yaw_deg, spec.pitch_deg)
+            pos = ref_pos + spec.distance * dir
+        end
+        RV_vec = spec.RV * dir
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
         add_source!(world, src, gctx; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
@@ -142,19 +151,19 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = spec.distance,
                        onchange = v -> begin
                            dist_ref[] = v
-                           update_distance(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           update_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = v -> begin
                            yaw_ref[] = v
-                           update_yaw_pitch(yaw_ref[], pitch_ref[], src, world, world.sources[spec.ref], dist_ref[])
+                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = v -> begin
                            pitch_ref[] = v
-                           update_yaw_pitch(yaw_ref[], pitch_ref[], src, world, world.sources[spec.ref], dist_ref[])
+                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             # RV irány – kézi yaw/pitch (pozíció nem változik)
