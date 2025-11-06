@@ -25,13 +25,17 @@ D) Parancsprotokoll (ACK/NOP + célzás):
 
 A) KOM - Kommentelési szabályok:
 - magyarul kommentelj, ne tedd a parancskódot (KOM) a kommentbe.
-- korábbi kommenteket is módosíthatod, átfogalmazhatod.
 - legyen tömör (≤100 karakter);
 - egy soros komment megengedett blokk-szintű szerkezetek (függvények, ciklusok stb.) felett, ha az a változtatás kontextusát segíti;
+- blokkon belül a kommenteket egy oszlopba rendezd (azonos oszlopba igazítva). Ha egy programsor túl hosszú, akkor az az egy komment eltérhet az oszloptól, emiatt ne módosuljon a 
 - továbbá egy programutasítás sor végén elhelyezett rövid komment is megengedett.
+- adott .jl file 1-3 sorában egy 3 soros rövid leírás, mire is jó adott .jl file.
 - ne az épp aktuális átalakítást kommenteld, igyekezz inkább végleges kommentet adni.
-- ahol ezt találod: <# kom>, oda írj egy találó kommentet.
-- blokkon belül a kommenteket egy oszlopba rendezd (azonos oszlopba igazítva).
+teljes oszlop pozíciója.
+- korábbi kommenteket is módosíthatod, átfogalmazhatod:
+    - ahol ezt találod: # <rethink>, tedd meg, de akár változatlanul is hagyhatod;
+    - ahol ezt találod: # <del>, az a kommentet töröld a # jellel együtt, viszont a tartalmát felhasználhatod, ha látsz benne fontos információt;
+    - ahol ezt találod: # <kom>, oda írj egy találó kommentet.
 
 B) Rövidzáras feltételek: egyszerű, egyutasításos esetekben használd az isnothing(x) || do_sg() / cond && action() mintát. Ha több utasítást kell feltételesen végrehajtani, használj if … end szerkezetet. Ne keverd === nothing-nel; az isnothing(x) a preferált.
 
