@@ -1,4 +1,8 @@
-# Forrás típus és műveletek – GUI‑független logika
+# Forrás entitás és alap műveletek: pozíció, RV/irány, megjelenítés.
+# GUI‑független, KISS utilok és állapotkezelés (regen+plot, UV).
+# Spherical pozicionálás (distance/yaw/pitch) és compute_dir alapú irányszámítás.
+#TODO: a függvények szignatúrájának felülvizsgálása, legyen egy logikus sorrend.
+#TODO: a függvények logikus sorrendjének meghatározása
 
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
@@ -36,120 +40,96 @@ function add_source!(world, src::Source, gctx; abscol::Int)
 end
 
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
+# TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii(radii::Vector{Float64}, bas_t::Float64, t::Float64, density::Float64)
-    dt_rel = (t - bas_t)
-    K = ceil(Int, dt_rel * density)
+    dt_rel = (t - bas_t)                        # relatív idő az indulástól
+    K = ceil(Int, dt_rel * density)             # aktív sugarak száma
     @inbounds begin
-        for i in 1:K
-            radii[i] = dt_rel - (i-1)/density
+        for i in 1:K                            # aktív szegmensek frissítése
+            radii[i] = dt_rel - (i-1)/density   # sugár idő az i. impulzushoz
         end
-        N = length(radii)
-    K < N && fill!(view(radii, K+1:N), 0.0)
+        N = length(radii)                       # pufferhossz
+    K < N && fill!(view(radii, K+1:N), 0.0)     # inaktív szakasz nullázása
     end
-    return radii
+    return radii                                # frissített puffer
 end
 
 # Pozíciók újragenerálása adott N alapján
+# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function update_positions(N::Int, src::Source, world)
     dp = src.RV / world.density            # két impulzus közti eltolás
-    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]
+    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
 end
 
-# Idő szerinti vizuális állapot alkalmazása (scrub/play)
-# Csak a sugarakat frissíti a world.t alapján. Később bővíthető a pozíciókra is.
+# Sugarak frissítése a world.t alapján
+# TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
 function apply_time!(world)
-    @inbounds for src in world.sources
-        src.radii[] = update_radii(src.radii[], src.bas_t, world.t[], world.density)
+    @inbounds for src in world.sources # források bejárása
+        src.radii[] = update_radii(src.radii[], src.bas_t, world.t[], world.density)  # sugarpuffer frissítése
     end
 end
 
-# RV skálár frissítése + positions újragenerálása (irány megtartása)
-# Paraméterek: RV (nagyság), src (forrás), world (világállapot)
+# RV skálázása; irány megtartása
 function rescale_RV_vec(RV::Float64, src::Source, world)
-    # irány megtartása: aktuális RV normalizálása és skálázása
-    u = src.RV / sqrt(sum(abs2, src.RV))
-    src.RV = u * RV
-    src.plot[:positions][] = src.positions = update_positions(length(src.positions), src, world)
+    u = src.RV / sqrt(sum(abs2, src.RV))    # irány megtartása: normalizálás és skálázás
+    src.RV = u * RV                         # skálázott RV beállítása
+    apply_pose!(src, world)                 # pálya újragenerálása és plot frissítése
 end
 
-# distance frissítése referencia alapján; RV nem változik
+# Referencia irány (yaw/pitch) alapján horgony beállítása, majd regen/plot
 function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    # relatív irány a ref RV tengelyéhez mérve
-    ref_pos = SVector(ref_src.positions[1]...)
-    dir = compute_dir(ref_src, yaw_deg, pitch_deg)
-    pos = ref_pos + distance * dir
-    apply_pose!(src, world, pos)
+    ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
+    dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # ref RV-hez mért irány (yaw/pitch)
+    src.act_p = ref_pos + distance * dir            # új horgony pozíció távolság és irány szerint
+    src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
+    apply_pose!(src, world)                         # pálya újragenerálása és plot frissítése
 end
 
-# RV irányának külön állítása (pozíció változatlan)
-function update_RV_yaw_pitch(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
-    rv_mag = sqrt(sum(abs2, src.RV))
-
-    # u: ref_RV irány egységvektor
-    ref_RV = ref_src.RV
-    u = ref_RV / sqrt(sum(abs2, ref_RV))
-
-    # stabil referencia a merőleges bázishoz
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
-    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz
-
-    # síkbázis ref_RV-re merőlegesen
-    e2p = refv - (sum(refv .* u)) * u
-    e2  = e2p / sqrt(sum(abs2, e2p))
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # u × e2
-
-    # fok → radián
-    yaw   = yaw_deg   * (pi/180)
-    pitch = pitch_deg * (pi/180)
-
-    # irányvektor yaw/pitch szerint (pitch 0° = Π₀, +pitch az u felé)
-    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u
-    dir = dir / sqrt(sum(abs2, dir))
-
-    # csak az RV irányát állítjuk; pozíció horgony marad
-    src.RV = rv_mag * dir
-    src.positions = update_positions(length(src.positions), src, world)
-    src.plot[:positions][] = src.positions
+# RV irány beállítása; pozíció nem változik
+function update_RV_direction(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
+    rv_mag = sqrt(sum(abs2, src.RV))                # RV nagyságának megtartása
+    dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # új irány számítása yaw/pitch alapján
+    src.RV = rv_mag * dir                           # irány frissítése; horgony változatlan
+    apply_pose!(src, world)                         # pálya újragenerálása és plot frissítése
 end
 
-# Pozíció alkalmazása: act_p, pálya és plot frissítése
-function apply_pose!(src::Source, world, pos)
-    src.act_p = pos
-    src.positions[1] = Point3d(pos...)
-    src.positions = update_positions(length(src.positions), src, world)
-    src.plot[:positions][] = src.positions
+# Pozíció alkalmazása: pálya és plot frissítése
+function apply_pose!(src::Source, world)
+    src.positions = update_positions(length(src.positions), src, world)  # pálya újragenerálása
+    src.plot[:positions][] = src.positions                               # plot frissítése
 end
 
-# irányvektor számítása a ref_src RV tengelyéhez képest adott yaw/pitch alapján
+# Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
 function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    ref_RV = ref_src.RV
-    u = ref_RV / sqrt(sum(abs2, ref_RV))
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)
-    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz
-    e2p = refv - (sum(refv .* u)) * u
-    e2  = e2p / sqrt(sum(abs2, e2p))
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])
-    yaw   = yaw_deg   * (pi/180)
-    pitch = pitch_deg * (pi/180)
-    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u
-    return dir / sqrt(sum(abs2, dir))
+    ref_RV = ref_src.RV                        # referencia RV vektora
+    u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
+    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)    # stabil referencia vektorok
+    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz                 # fallback, ha közel párhuzamos
+    e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
+    e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])  # e3 = u × e2
+    yaw   = yaw_deg   * (pi/180)               # fok → radián
+    pitch = pitch_deg * (pi/180)               # fok → radián
+    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u  # irány komponensek
+    return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
 end
 
 # UV oszlop indexből uv_transform kiszámítása
 function calculate_source_uv(abscol::Int, gctx)
-    @dbg_assert(1 <= abscol <= gctx.cols, "abscol out of range")
-    u0 = Float32((abscol - 1) / gctx.cols)
-    sx = 1f0 / Float32(gctx.cols)
-    return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0)))
+    @dbg_assert(1 <= abscol <= gctx.cols, "abscol out of range")    # érvényes atlasz oszlop
+    u0 = Float32((abscol - 1) / gctx.cols)                          # oszlop kezdő U koordináta
+    sx = 1f0 / Float32(gctx.cols)                                   # oszlopszélesség
+    return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
 end
 
+# UV‑transzform frissítése a forráson
 function update_source_uv!(abscol::Int, src::Source, gctx)
-    src.plot[:uv_transform][] = calculate_source_uv(abscol, gctx)
+    src.plot[:uv_transform][] = calculate_source_uv(abscol, gctx)   # UV transzform beállítása
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
 function update_source_RR(new_RR::Float64, src::Source, gctx, abscol::Int)
-    src.RR = new_RR
-    update_source_uv!(abscol, src, gctx)
+    src.RR = new_RR                         # RR skálár frissítése
+    update_source_uv!(abscol, src, gctx)    # textúra oszlop frissítése
     return src
 end

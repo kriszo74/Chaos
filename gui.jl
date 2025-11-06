@@ -171,13 +171,13 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = 0.0,
                        onchange = v -> begin
                            rv_yaw_ref[] = v
-                           update_RV_yaw_pitch(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           update_RV_direction(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = 0.0,
                        onchange = v -> begin
                            rv_pitch_ref[] = v
-                           update_RV_yaw_pitch(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           update_RV_direction(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
         end
     end
