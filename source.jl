@@ -57,7 +57,7 @@ end
 # Pozíciók újragenerálása adott N alapján
 # TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function update_positions(N::Int, src::Source, world)
-    dp = src.RV / world.density            # két impulzus közti eltolás
+    dp = src.RV / world.density            # két impulzus közti eltolás TODO: ezt a hányadost RV változásakor kellene számolni!
     return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
 end
 
@@ -76,21 +76,19 @@ function rescale_RV_vec(RV::Float64, src::Source, world)
     apply_pose!(src, world)                 # pálya újragenerálása és plot frissítése
 end
 
-# Referencia irány (yaw/pitch) alapján horgony beállítása, majd regen/plot
-function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+# Referencia irány (yaw/pitch) alapján horgony beállítása
+function compute_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
     ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
     dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + distance * dir            # új horgony pozíció távolság és irány szerint
     src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
-    apply_pose!(src, world)                         # pálya újragenerálása és plot frissítése
 end
 
 # RV irány beállítása; pozíció nem változik
-function update_RV_direction(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
+function compute_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
     rv_mag = sqrt(sum(abs2, src.RV))                # RV nagyságának megtartása
     dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # új irány számítása yaw/pitch alapján
     src.RV = rv_mag * dir                           # irány frissítése; horgony változatlan
-    apply_pose!(src, world)                         # pálya újragenerálása és plot frissítése
 end
 
 # Pozíció alkalmazása: pálya és plot frissítése
