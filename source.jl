@@ -18,12 +18,16 @@ mutable struct Source
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-function add_source!(world, src::Source, gctx; abscol::Int)
+function add_source!(world, src::Source, gctx, spec; abscol::Int)
+    src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció
+    if spec.ref !== nothing
+        ref_src = world.sources[spec.ref]
+        compute_spherical_position!(spec.distance, src, world, ref_src, spec.yaw_deg, spec.pitch_deg)
+        compute_RV_direction!(spec.rv_yaw_deg, spec.rv_pitch_deg, src, world, ref_src)
+    end
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
-    src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció
     src.positions = update_positions(N, src, world)          # kezdeti pozíciósor generálása aktuális RV-vel
-    push!(world.sources, src)
 
     # UV-s marker és RR textúra alkalmazása
     src.plot = meshscatter!(gctx.scene, src.positions;
@@ -36,6 +40,7 @@ function add_source!(world, src::Source, gctx; abscol::Int)
         alpha        = src.alpha,              # átlátszóság mértéke
         interpolate  = true,                   # textúrainterpoláció bekapcsolva
         shading      = true)                   # fény-árnyék aktív
+    push!(world.sources, src)
     return src
 end
 

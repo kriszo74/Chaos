@@ -79,7 +79,7 @@ const PRESET_TABLE = Dict(
     ],
     "Dual (2)" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=60.0, pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
+        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=60.0, pitch_deg=90.0,  rv_yaw_deg=30.0,  rv_pitch_deg=120.0),
     ],
     "Batch" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,   pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
@@ -120,7 +120,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         end
         RV_vec = spec.RV * dir
         src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
-        add_source!(world, src, gctx; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+        add_source!(world, src, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
