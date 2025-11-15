@@ -109,18 +109,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
 
-        if isnothing(spec.ref) #TODO: PRESET-ből jöjjön ez is.
-            pos = SVector(0.0, 0.0, 0.0)
-            dir = SVector(1.0, 0.0, 0.0) # alap irány X tengely
-        else
-            ref_src = world.sources[spec.ref]
-            ref_pos = SVector(ref_src.positions[1]...)
-            dir = compute_dir(ref_src, spec.yaw_deg, spec.pitch_deg)
-            pos = ref_pos + spec.distance * dir
-        end
-        RV_vec = spec.RV * dir
-        src = Source(pos, RV_vec, spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
-        add_source!(world, src, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+        src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;

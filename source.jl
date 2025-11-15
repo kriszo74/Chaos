@@ -18,12 +18,13 @@ mutable struct Source
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-function add_source!(world, src::Source, gctx, spec; abscol::Int)
+function add_source!(world, gctx, spec; abscol::Int)
+    src = Source(SVector(0.0, 0.0, 0.0), SVector(spec.RV, 0.0, 0.0), spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
     src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
-        compute_spherical_position!(spec.distance, src, world, ref_src, spec.yaw_deg, spec.pitch_deg)
-        compute_RV_direction!(spec.rv_yaw_deg, spec.rv_pitch_deg, src, world, ref_src)
+        compute_spherical_position!(spec.distance, src, world, ref_src, spec.yaw_deg, spec.pitch_deg) #TODO: spec-et átadni egészben.
+        compute_RV_direction!(spec.rv_yaw_deg, spec.rv_pitch_deg, src, world, ref_src) #TODO: spec-et átadni egészben.
     end
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
