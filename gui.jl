@@ -110,7 +110,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        update_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
+                        apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
                     end)
 
         # alpha row (ALWAYS)
@@ -122,13 +122,13 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         # RV (skálár) – LIVE recompute
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
-                   onchange = v -> rescale_RV_vec(v, world.sources[i], world))
+                   onchange = v -> apply_RV_rescale!(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX; startvalue = spec.RR,
                    onchange = v -> begin
                        cur_rr_offset[] = 1 + round(Int, v / RR_STEP)
-                       update_source_RR(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+                       apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
                    end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
@@ -144,21 +144,21 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = spec.distance,
                        onchange = v -> begin
                            dist_ref[] = v
-                           update_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           apply_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = v -> begin
                            yaw_ref[] = v
-                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           apply_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = v -> begin
                            pitch_ref[] = v
-                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           apply_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             # RV irány – kézi yaw/pitch (pozíció nem változik)
@@ -166,14 +166,14 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = spec.rv_yaw_deg,
                        onchange = v -> begin
                            rv_yaw_ref[] = v
-                           update_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           apply_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
                        
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = spec.rv_pitch_deg,
                        onchange = v -> begin
                            rv_pitch_ref[] = v
-                           update_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           apply_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
         end
     end
