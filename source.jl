@@ -19,8 +19,17 @@ end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
 function add_source!(world, gctx, spec; abscol::Int)
-    src = Source(SVector(0.0, 0.0, 0.0), SVector(spec.RV, 0.0, 0.0), spec.RR, 0.0, Point3d[], Observable(Float64[]), gctx.atlas, 0.2, nothing)
-    src.positions = [Point3d(src.act_p...)]                  # horgony: első pont a kiinduló pozíció TODO: ezt betenni src értékadásába.
+    src = Source(
+        SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
+        SVector(spec.RV, 0.0, 0.0),             # kezdő RV vektor
+        spec.RR,                                # saját tengely körüli RR
+        0.0,                                    # indulási idő
+        [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
+        Observable(Float64[]),                  # sugarak puffer (observable)
+        gctx.atlas,                             # textúra atlasz
+        0.2,                                    # alap áttetszőség
+        nothing)                                # plot handle kezdetben üres
+    
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
         compute_spherical_position!(spec.distance, src, world, ref_src, spec.yaw_deg, spec.pitch_deg) #TODO: spec-et átadni egészben.
@@ -31,16 +40,18 @@ function add_source!(world, gctx, spec; abscol::Int)
     src.positions = update_positions(N, src, world)          # kezdeti pozíciósor generálása aktuális RV-vel
 
     # UV-s marker és RR textúra alkalmazása
-    src.plot = meshscatter!(gctx.scene, src.positions;
-        marker       = gctx.marker,            # UV-s gömb marker
-        markersize   = src.radii,              # példányonkénti sugárvektor
-        color        = src.color,              # textúra (Matrix{RGBAf})
+    src.plot = meshscatter!(
+        gctx.scene,                             # 3D jelenet (LScene)
+        src.positions;                          # forrás pályapontjai
+        marker       = gctx.marker,             # UV-s gömb marker
+        markersize   = src.radii,               # példányonkénti sugárvektor
+        color        = src.color,               # textúra (Matrix{RGBAf})
         uv_transform = calculate_source_uv(abscol, gctx), # UV‑atlasz oszlop kiválasztása 
-        rotation     = Vec3f(0.0, pi/4, 0.0),  # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
-        transparency = true,                   # átlátszóság engedélyezve
-        alpha        = src.alpha,              # átlátszóság mértéke
-        interpolate  = true,                   # textúrainterpoláció bekapcsolva
-        shading      = true)                   # fény-árnyék aktív
+        rotation     = Vec3f(0.0, pi/4, 0.0),   # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
+        transparency = true,                    # átlátszóság engedélyezve
+        alpha        = src.alpha,               # átlátszóság mértéke
+        interpolate  = true,                    # textúrainterpoláció bekapcsolva
+        shading      = true)                    # fény-árnyék aktív
     push!(world.sources, src)
     return src
 end
