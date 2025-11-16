@@ -97,6 +97,16 @@ function compute_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source
     src.RV = rv_mag * dir                           # irány frissítése; horgony változatlan
 end
 
+function update_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
+    compute_RV_direction!(yaw_deg, pitch_deg, src, world, ref_src)
+    apply_pose!(src, world)
+end
+
+function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+    compute_spherical_position!(distance, src, world, ref_src, yaw_deg, pitch_deg)
+    apply_pose!(src, world)
+end
+
 # Pozíció alkalmazása: pálya és plot frissítése
 function apply_pose!(src::Source, world)
     src.positions = update_positions(length(src.positions), src, world)  # pálya újragenerálása

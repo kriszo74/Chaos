@@ -144,24 +144,21 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = spec.distance,
                        onchange = v -> begin
                            dist_ref[] = v
-                           compute_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
-                           apply_pose!(world.sources[i], world)
+                           update_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = v -> begin
                            yaw_ref[] = v
-                           compute_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
-                           apply_pose!(src, world)
+                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = v -> begin
                            pitch_ref[] = v
-                           compute_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
-                           apply_pose!(src, world)
+                           update_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
             # RV irány – kézi yaw/pitch (pozíció nem változik)
@@ -169,16 +166,14 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        startvalue = spec.rv_yaw_deg,
                        onchange = v -> begin
                            rv_yaw_ref[] = v
-                           compute_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
-                           apply_pose!(src, world)
+                           update_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
                        
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = spec.rv_pitch_deg,
                        onchange = v -> begin
                            rv_pitch_ref[] = v
-                           compute_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
-                           apply_pose!(src, world)
+                           update_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
         end
     end
