@@ -75,7 +75,7 @@ const ref_choice = Ref(Int[])
 
 const PRESET_TABLE = Dict(
     "Single" => [
-        (color=:cyan,    RV=2.0, RR=2.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
+        (color=:green,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
     ],
     "Dual (2)" => [
         (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
@@ -101,21 +101,16 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(PRESET_TABLE[preset])
-        dist_ref  = Ref(spec.distance)        # relatív távolság állapota (Ref)
-        yaw_ref   = Ref(spec.yaw_deg)         # relatív azimut állapota (Ref)
-        pitch_ref = Ref(spec.pitch_deg)       # relatív eleváció állapota (Ref)
-        rv_yaw_ref   = Ref(spec.rv_yaw_deg)   # RV azimut [°] (Ref)
-        rv_pitch_ref = Ref(spec.rv_pitch_deg) # RV eleváció [°] (Ref)
-        cur_h_ix = Ref(1) # hue-blokk indexe (1..12) #TODO: alapszín meghatározása
-        cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))  # RR oszlop offset (1..ncols)
-
+        cur_h_ix = Ref(findfirst(h -> HUE30_NAMES[h] == spec.color, 0:30:330))  # hue-blokk indexe (1..12)
+        cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))                  # RR oszlop offset (1..ncols)
         src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
+                    selected_index = cur_h_ix[],
                     onchange = sel -> begin
-                    cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                    update_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
+                        cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
+                        update_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
                     end)
 
         # alpha row (ALWAYS)
@@ -138,6 +133,13 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
         if spec.ref !== nothing
+            dist_ref  = Ref(spec.distance)        # relatív távolság állapota (Ref)
+            yaw_ref   = Ref(spec.yaw_deg)         # relatív azimut állapota (Ref)
+            pitch_ref = Ref(spec.pitch_deg)       # relatív eleváció állapota (Ref)
+            rv_yaw_ref   = Ref(spec.rv_yaw_deg)   # RV azimut [°] (Ref)
+            rv_pitch_ref = Ref(spec.rv_pitch_deg) # RV eleváció [°] (Ref)            
+
+            
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
                        startvalue = spec.distance,
                        onchange = v -> begin
@@ -145,6 +147,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                            compute_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                            apply_pose!(world.sources[i], world)
                        end)
+
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = v -> begin
@@ -152,6 +155,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                            compute_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                            apply_pose!(src, world)
                        end)
+
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = v -> begin
