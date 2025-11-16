@@ -2,7 +2,6 @@
 # GUI‑független, KISS utilok és állapotkezelés (regen+plot, UV).
 # Spherical pozicionálás (distance/yaw/pitch) és compute_dir alapú irányszámítás.
 #TODO: a függvények szignatúrájának felülvizsgálása, legyen egy logikus sorrend.
-#TODO: a függvények logikus sorrendjének meghatározása
 
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
@@ -56,6 +55,43 @@ function add_source!(world, gctx, spec; abscol::Int)
     return src
 end
 
+# Sugarak frissítése a world.t alapján
+# TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
+function apply_world_time!(world)
+    @inbounds for src in world.sources # források bejárása
+        src.radii[] = update_radii!(src.radii[], src.bas_t, world.t[], world.density)  # sugarpuffer frissítése
+    end
+end
+
+# Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
+function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+    ref_RV = ref_src.RV                        # referencia RV vektora
+    u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
+    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)    # stabil referencia vektorok
+    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz                 # fallback, ha közel párhuzamos
+    e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
+    e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])  # e3 = u × e2
+    yaw   = yaw_deg   * (pi/180)               # fok → radián TODO: fok radián konverzió megszüntetése
+    pitch = pitch_deg * (pi/180)               # fok → radián TODO: fok radián konverzió megszüntetése
+    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u  # irány komponensek TODO: sincos
+    return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
+end
+
+# Pozíciók újragenerálása adott N alapján
+# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
+function compute_positions(N::Int, src::Source, world)
+    dp = src.RV / world.density            # két impulzus közti eltolás TODO: ezt a hányadost RV változásakor kellene számolni!
+    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
+end
+
+# UV oszlop indexből uv_transform kiszámítása
+function compute_source_uv(abscol::Int, gctx)
+    u0 = Float32((abscol - 1) / gctx.cols)                          # oszlop kezdő U koordináta
+    sx = 1f0 / Float32(gctx.cols)                                   # oszlopszélesség
+    return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
+end
+
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(radii::Vector{Float64}, bas_t::Float64, t::Float64, density::Float64)
@@ -69,28 +105,6 @@ function update_radii!(radii::Vector{Float64}, bas_t::Float64, t::Float64, densi
     K < N && fill!(view(radii, K+1:N), 0.0)     # inaktív szakasz nullázása
     end
     return radii                                # frissített puffer
-end
-
-# Pozíciók újragenerálása adott N alapján
-# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
-function compute_positions(N::Int, src::Source, world)
-    dp = src.RV / world.density            # két impulzus közti eltolás TODO: ezt a hányadost RV változásakor kellene számolni!
-    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
-end
-
-# Sugarak frissítése a world.t alapján
-# TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
-function apply_time!(world)
-    @inbounds for src in world.sources # források bejárása
-        src.radii[] = update_radii!(src.radii[], src.bas_t, world.t[], world.density)  # sugarpuffer frissítése
-end
-end
-
-# RV skálázása; irány megtartása
-function apply_RV_rescale!(RV::Float64, src::Source, world)
-    u = src.RV / sqrt(sum(abs2, src.RV))    # irány megtartása: normalizálás és skálázás
-    src.RV = u * RV                         # skálázott RV beállítása
-    apply_pose!(src, world)                 # pálya újragenerálása és plot frissítése
 end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
@@ -108,6 +122,19 @@ function update_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source,
     src.RV = rv_mag * dir                           # irány frissítése; horgony változatlan
 end
 
+# Pozíció alkalmazása: pálya és plot frissítése
+function apply_pose!(src::Source, world)
+    src.positions = compute_positions(length(src.positions), src, world)  # pálya újragenerálása
+    src.plot[:positions][] = src.positions                                # plot frissítése
+end
+
+# RV skálázása; irány megtartása
+function apply_RV_rescale!(RV::Float64, src::Source, world)
+    u = src.RV / sqrt(sum(abs2, src.RV))    # irány megtartása: normalizálás és skálázás
+    src.RV = u * RV                         # skálázott RV beállítása
+    apply_pose!(src, world)                 # pálya újragenerálása és plot frissítése
+end
+
 function apply_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
     update_RV_direction!(yaw_deg, pitch_deg, src, world, ref_src)
     apply_pose!(src, world)
@@ -116,34 +143,6 @@ end
 function apply_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
     update_spherical_position!(distance, src, world, ref_src, yaw_deg, pitch_deg)
     apply_pose!(src, world)
-end
-
-# Pozíció alkalmazása: pálya és plot frissítése
-function apply_pose!(src::Source, world)
-    src.positions = compute_positions(length(src.positions), src, world)  # pálya újragenerálása
-    src.plot[:positions][] = src.positions                               # plot frissítése
-end
-
-# Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
-function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    ref_RV = ref_src.RV                        # referencia RV vektora
-    u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)    # stabil referencia vektorok
-    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz                 # fallback, ha közel párhuzamos
-    e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
-    e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])  # e3 = u × e2
-    yaw   = yaw_deg   * (pi/180)               # fok → radián
-    pitch = pitch_deg * (pi/180)               # fok → radián
-    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u  # irány komponensek
-    return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
-end
-
-# UV oszlop indexből uv_transform kiszámítása
-function compute_source_uv(abscol::Int, gctx)
-    u0 = Float32((abscol - 1) / gctx.cols)                          # oszlop kezdő U koordináta
-    sx = 1f0 / Float32(gctx.cols)                                   # oszlopszélesség
-    return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
 end
 
 # UV‑transzform frissítése a forráson
