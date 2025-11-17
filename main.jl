@@ -55,7 +55,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
-            rem > 0 && sleep(rem)
+            rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
             @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
         rt.paused[] = true
