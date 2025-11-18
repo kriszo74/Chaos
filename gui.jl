@@ -59,35 +59,16 @@ const HUE30_LABELS = [string(HUE30_NAMES[h], " (", h, Char(176), ")") for h in 0
 const REF_NONE = 0
 const ref_choice = Ref(Int[])
 
-# adatvezérelt preset-tábla a forrásokhoz (pozíció, szín)
-# PRESET specifikáció mezők – jelenleg csak betöltjük őket, a viselkedés változatlan (NFC)
-#  color::Symbol          – megjelenítési szín
-#  RV::Float64            – sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irány.
-#  RR::Float64            – rotation rate (saját időtengely körüli szögsebesség) – skalár.
-#  ref::Union{Nothing,Int}– hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
-#  distance::Float64      – távolság a ref forráshoz
-#  yaw_deg::Float64       – azimut [°] a ref RV tengelyéhez viszonyítva
-#  pitch_deg::Float64     – eleváció [°] a Π₀ síkjától felfelé (+) / lefelé (−)
-#  rv_yaw_deg::Float64    – RV irány azimut [°]
-#  rv_pitch_deg::Float64  – RV irány eleváció [°]
-# TODO: PRESET_TABLE külső fájlból (pl. presets.toml/presets.json) legyen beolvasva; ez csak átmeneti definíció.
-
-const PRESET_TABLE = Dict(
-    "Single" => [
-        (color=:green,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-    ],
-    "Dual (2)" => [
-        (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,  pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=60.0, pitch_deg=90.0,  rv_yaw_deg=30.0,  rv_pitch_deg=120.0),
-    ],
-    "Batch" => [
-        (color=:cyan,    RV=2.0, RR=0.0, ref=nothing, distance=0.0, yaw_deg=0.0,   pitch_deg=0.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:magenta, RV=2.0, RR=0.0, ref=1,       distance=2.0, yaw_deg=45.0,  pitch_deg=15.0, rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:yellow,  RV=2.0, RR=0.0, ref=1,       distance=3.5, yaw_deg=-30.0, pitch_deg=15.0, rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:green,   RV=2.0, RR=0.0, ref=2,       distance=2.0, yaw_deg=90.0,  pitch_deg=-10.0,rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-        (color=:orange,  RV=2.0, RR=0.0, ref=3,       distance=1.5, yaw_deg=-90.0, pitch_deg=5.0,  rv_yaw_deg=0.0,  rv_pitch_deg=0.0),
-    ],
-)
+preset_specs(preset::String) =
+    [(color      = Symbol(e["color"]),  # megjelenítési szín
+      RV         = e["RV"],             # sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irány.
+      RR         = e["RR"],             # rotation rate (saját időtengely körüli szögsebesség) – skalár.
+      ref        = e["ref"] == 0 ? nothing : e["ref"],  # hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
+      distance   = e["distance"],       # távolság a ref forráshoz
+      yaw_deg    = e["yaw_deg"],        # azimut [°] a ref RV tengelyéhez viszonyítva
+      pitch_deg  = e["pitch_deg"],      # eleváció [°] a Π₀ síkjától felfelé (+) / lefelé (−)
+      rv_yaw_deg = e["rv_yaw_deg"],     # RV irány azimut [°]
+      rv_pitch_deg = e["rv_pitch_deg"]) for e in find_entries_by_name(CFG["presets"]["table"], preset)]
 
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset::String)
@@ -99,7 +80,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
-    for (i, spec) in enumerate(PRESET_TABLE[preset])
+    for (i, spec) in enumerate(preset_specs(preset))
         cur_h_ix = Ref(findfirst(h -> HUE30_NAMES[h] == spec.color, 0:30:330))  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))                  # RR oszlop offset (1..ncols)
         src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
