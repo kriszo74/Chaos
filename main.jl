@@ -14,6 +14,9 @@ macro dbg_assert(cond, msg="")
         @assert $(esc(cond)) $(esc(msg))
     end)
 end
+
+include("config.jl")    # kofig betöltése
+
 struct Runtime
     sim_task::Observable{Union{Nothing,Task}}
     paused::Observable{Bool}

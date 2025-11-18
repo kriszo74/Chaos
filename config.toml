@@ -1,0 +1,103 @@
+title = "Chaos GUI preset konfiguráció"
+version = "0.1.0"
+
+[presets]
+order = ["Dual (2)", "Single", "Batch"]
+
+[[presets.table]]
+name = "Single"
+
+[[presets.table.entries]]
+color = "green"
+RV = 2.0
+RR = 0.0
+ref = 0
+distance = 0.0
+yaw_deg = 0.0
+pitch_deg = 0.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table]]
+name = "Dual (2)"
+
+[[presets.table.entries]]
+color = "cyan"
+RV = 2.0
+RR = 0.0
+ref = 0
+distance = 0.0
+yaw_deg = 0.0
+pitch_deg = 0.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table.entries]]
+color = "magenta"
+RV = 2.0
+RR = 0.0
+ref = 1
+distance = 2.0
+yaw_deg = 60.0
+pitch_deg = 90.0
+rv_yaw_deg = 30.0
+rv_pitch_deg = 120.0
+
+[[presets.table]]
+name = "Batch"
+
+[[presets.table.entries]]
+color = "cyan"
+RV = 2.0
+RR = 0.0
+ref = 0
+distance = 0.0
+yaw_deg = 0.0
+pitch_deg = 0.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table.entries]]
+color = "magenta"
+RV = 2.0
+RR = 0.0
+ref = 1
+distance = 2.0
+yaw_deg = 45.0
+pitch_deg = 15.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table.entries]]
+color = "yellow"
+RV = 2.0
+RR = 0.0
+ref = 1
+distance = 3.5
+yaw_deg = -30.0
+pitch_deg = 15.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table.entries]]
+color = "green"
+RV = 2.0
+RR = 0.0
+ref = 2
+distance = 2.0
+yaw_deg = 90.0
+pitch_deg = -10.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+
+[[presets.table.entries]]
+color = "orange"
+RV = 2.0
+RR = 0.0
+ref = 3
+distance = 1.5
+yaw_deg = -90.0
+pitch_deg = 5.0
+rv_yaw_deg = 0.0
+rv_pitch_deg = 0.0
+

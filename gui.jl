@@ -53,7 +53,6 @@ const GUI_COL_W = 220
 const RR_MAX = 2.0
 const RR_STEP = 0.1
 # ÚJ: egységes sebességskálázó (a fő RV hossz). A további forrásoknál ebből képzünk vektort.
-const PRESET_ORDER = ("Single", "Dual (2)", "Batch")
 const HUE30_LABELS = [string(HUE30_NAMES[h], " (", h, Char(176), ")") for h in 0:30:330]
 
 # Ref‑választó állapot (globális, egyszerű tároló)
@@ -200,7 +199,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                     onchange = v -> (world.E = v))
 
     # Aktuális preset és t állapot a GUI-ban
-    presets = collect(PRESET_ORDER) #TODO: setup_gui! ne kezeljen PRESET-et. rebuild_sources_panel! kezelje, ha null-t kap.
+    presets = CFG["presets"]["order"] #TODO: setup_gui! ne kezeljen PRESET-et. rebuild_sources_panel! kezelje, ha null-t kap.
     current_preset = Ref(first(presets))
     # Preset választó (fent tartjuk, mint eddig)
     preset_menu = mk_menu!(fig, gctx.gl, 2, "Preset", presets; selected_index = 1,
