@@ -53,11 +53,6 @@ const GUI_COL_W = 220
 const RR_MAX = 2.0
 const RR_STEP = 0.1
 
-const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"]; by = last)]
-const HUE_NAME_TO_INDEX = let pairs = sort_pairs(CFG["gui"]["hue"]; by = last)
-    Dict(Symbol(name) => i for (i, (name, _)) in enumerate(pairs))
-end
-
 # Ref‑választó állapot (globális, egyszerű tároló)
 const REF_NONE = 0
 const ref_choice = Ref(Int[])
@@ -83,16 +78,20 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
+    hue_pairs = sort_pairs(CFG["gui"]["hue"])
+    hue_labels = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in hue_pairs]
+    hue_name_to_index = Dict(Symbol(name) => i for (i, (name, _)) in enumerate(hue_pairs))
+
     for (i, spec) in enumerate(preset_specs(preset))
-        cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
+        cur_h_ix = Ref(hue_name_to_index[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))                  # RR oszlop offset (1..ncols)
         src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
-        mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
+        mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", hue_labels;
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
-                        cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
+                        cur_h_ix[] = ix = findfirst(==(sel), hue_labels)
                         apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
                     end)
 
