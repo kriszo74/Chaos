@@ -50,15 +50,11 @@ end
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
 
-# Ref‑választó állapot (globális, egyszerű tároló)
-const REF_NONE = CFG["gui"]["REF_NONE"]
-const ref_choice = Ref(Int[])
-
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
       RV         = e["RV"],             # sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irány.
       RR         = e["RR"],             # rotation rate (saját időtengely körüli szögsebesség) – skalár.
-      ref        = e["ref"] == 0 ? nothing : e["ref"],  # hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
+      ref        = e["ref"] == CFG["gui"]["REF_NONE"] ? nothing : e["ref"],  # hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
       distance   = e["distance"],       # távolság a ref forráshoz
       yaw_deg    = e["yaw_deg"],        # azimut [°] a ref RV tengelyéhez viszonyítva
       pitch_deg  = e["pitch_deg"],      # eleváció [°] a Π₀ síkjától felfelé (+) / lefelé (−)
