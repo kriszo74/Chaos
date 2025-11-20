@@ -52,8 +52,11 @@ end
 const GUI_COL_W = 220
 const RR_MAX = 2.0
 const RR_STEP = 0.1
-# ÚJ: egységes sebességskálázó (a fő RV hossz). A további forrásoknál ebből képzünk vektort.
-const HUE30_LABELS = [string(HUE30_NAMES[h], " (", h, Char(176), ")") for h in 0:30:330]
+
+const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"]; by = last)]
+const HUE_NAME_TO_INDEX = let pairs = sort_pairs(CFG["gui"]["hue"]; by = last)
+    Dict(Symbol(name) => i for (i, (name, _)) in enumerate(pairs))
+end
 
 # Ref‑választó állapot (globális, egyszerű tároló)
 const REF_NONE = 0
@@ -81,7 +84,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(preset_specs(preset))
-        cur_h_ix = Ref(findfirst(h -> HUE30_NAMES[h] == spec.color, 0:30:330))  # hue-blokk indexe (1..12)
+        cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))                  # RR oszlop offset (1..ncols)
         src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 

@@ -1,6 +1,31 @@
 title = "Chaos GUI preset konfiguráció"
 version = "0.1.0"
 
+[gui]
+GUI_COL_W = 220
+RR_MAX = 2.0
+RR_STEP = 0.1
+REF_NONE = 0
+
+[gui.hue]
+red = 0
+orange = 30
+yellow = 60
+chartreuse = 90
+green = 120
+springgreen = 150
+cyan = 180
+dodgerblue = 210
+blue = 240
+indigo = 270
+magenta = 300
+deeppink = 330
+
+[world]
+E = 3.0
+density = 1.0
+max_t = 10.0
+
 [presets]
 order = ["Dual (2)", "Single", "Batch"]
 
@@ -100,4 +125,3 @@ yaw_deg = -90.0
 pitch_deg = 5.0
 rv_yaw_deg = 0.0
 rv_pitch_deg = 0.0
-

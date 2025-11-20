@@ -13,3 +13,5 @@ function find_entries_by_name(tables, name::AbstractString; key::AbstractString 
     isnothing(idx) && error("Hiányzó bejegyzés: $(key) = $name")
     return tables[idx]["entries"]
 end
+
+sort_pairs(tbl; by = last) = sort!(collect(tbl); by = by)
