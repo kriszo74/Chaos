@@ -47,14 +47,11 @@ end
 
 ## --- Dynamic preset helpers ---
 
-# GUI konstansok (NFC)
-# TODO: Minden konstans (GUI_COL_W, PRESET_ORDER, REF_NONE, PRESET_TABLE, stb.) külső fájlból legyen betöltve (pl. TOML/JSON). Ideiglenesen hardcode.
-const GUI_COL_W = 220
-const RR_MAX = 2.0
-const RR_STEP = 0.1
+const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
+const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
 
 # Ref‑választó állapot (globális, egyszerű tároló)
-const REF_NONE = 0
+const REF_NONE = CFG["gui"]["REF_NONE"]
 const ref_choice = Ref(Int[])
 
 preset_specs(preset::String) =
@@ -78,20 +75,16 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
-    hue_pairs = sort_pairs(CFG["gui"]["hue"])
-    hue_labels = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in hue_pairs]
-    hue_name_to_index = Dict(Symbol(name) => i for (i, (name, _)) in enumerate(hue_pairs))
-
     for (i, spec) in enumerate(preset_specs(preset))
-        cur_h_ix = Ref(hue_name_to_index[spec.color])  # hue-blokk indexe (1..12)
-        cur_rr_offset = Ref(1 + round(Int, spec.RR / RR_STEP))                  # RR oszlop offset (1..ncols)
+        cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
+        cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
         src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
 
         # hue row (DISCRETE 0..330° step 30°)
-        mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", hue_labels;
+        mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
-                        cur_h_ix[] = ix = findfirst(==(sel), hue_labels)
+                        cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
                         apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
                     end)
 
@@ -107,9 +100,9 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    onchange = v -> apply_RV_rescale!(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:RR_STEP:RR_MAX; startvalue = spec.RR,
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:CFG["gui"]["RR_STEP"]:CFG["gui"]["RR_MAX"]; startvalue = spec.RR,
                    onchange = v -> begin
-                       cur_rr_offset[] = 1 + round(Int, v / RR_STEP)
+                       cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
                        apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
                    end)
 
@@ -166,10 +159,10 @@ end
 
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
 function setup_gui!(fig, scene, world::World, rt::Runtime)
-    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(RR_MAX), Float32(RR_STEP))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
+    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
     fig[1, 1] = gctx.gl = GridLayout() # Setting panel
     gctx.gl.alignmode = Outside(10) # külső padding
-    colsize!(fig.layout, 1, Fixed(GUI_COL_W))  # keskeny GUI-oszlop
+    colsize!(fig.layout, 1, Fixed(CFG["gui"]["GUI_COL_W"]))  # keskeny GUI-oszlop
 
     gctx.gl[3, 1]   = Label(fig, "Sources"; color = :white)
     gctx.gl[4, 1:3] = gctx.sources_gl = GridLayout() # Sources panel
