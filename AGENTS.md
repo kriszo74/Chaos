@@ -13,7 +13,7 @@ C) Műveleti jelzők:
 - NOP = nincs módosítás, csak egyeztetés.
 
 D) Parancsprotokoll (ACK/NOP + célzás):
-- `ACK:PAR` = hajtsd végre a parancsot kérdés nélkül az irányelvek szerint.
+- `ACK:PAR` = hajtsd végre a parancsot kérdés nélkül az irányelvek szerint, viszont csak külön kérésre kommitolj.
 - `ACK:KOM` = alkalmazd a kommentelési szabályokat; fésüld át és írd át.
 - `ACK:KOM:COL` = alparancs, pl. kommentek oszlopba rendezése blokkon belül (azonos oszlopra igazítva).
 - Opcionális szűkítés: `ACK:KOM source.jl` csak a megadott fájlra.
