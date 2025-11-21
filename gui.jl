@@ -45,8 +45,7 @@ function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
     return btn
 end
 
-## --- Dynamic preset helpers ---
-
+# Hue kiosztás configból: címkék és index lookup
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
 
@@ -96,11 +95,12 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    onchange = v -> apply_RV_rescale!(v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:CFG["gui"]["RR_STEP"]:CFG["gui"]["RR_MAX"]; startvalue = spec.RR,
-                   onchange = v -> begin
-                       cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
-                       apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
-                   end)
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:CFG["gui"]["RR_STEP"]:CFG["gui"]["RR_MAX"]; 
+                    startvalue = spec.RR,
+                    onchange = v -> begin
+                        cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
+                        apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+                    end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
         if spec.ref !== nothing
@@ -110,7 +110,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
             rv_yaw_ref   = Ref(spec.rv_yaw_deg)   # RV azimut [°] (Ref)
             rv_pitch_ref = Ref(spec.rv_pitch_deg) # RV eleváció [°] (Ref)            
 
-            
+            # Ref távolság csúszka: sugár frissítése ref forráshoz képest
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
                        startvalue = spec.distance,
                        onchange = v -> begin
@@ -118,6 +118,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                            apply_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
+            # Ref azimut csúszka: pálya síkbeli elforgatása ref körül       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = spec.yaw_deg,
                        onchange = v -> begin
@@ -125,6 +126,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                            apply_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
                        end)
 
+            # Ref pitch csúszka: eleváció módosítása refhez képest       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = spec.pitch_deg,
                        onchange = v -> begin
@@ -139,7 +141,8 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                            rv_yaw_ref[] = v
                            apply_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
                        end)
-                       
+            
+            # Ref RV pitch: irány döntése helyváltoztatás nélkül                       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = spec.rv_pitch_deg,
                        onchange = v -> begin
