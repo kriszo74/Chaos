@@ -54,7 +54,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             world.t[] > world.max_t && break
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
-                src.radii[] = update_radii!(src.radii[], src.bas_t, world.t[], world.density)
+                src.radii[] = update_radii!(src, world)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used

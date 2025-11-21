@@ -59,7 +59,7 @@ end
 # TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
 function apply_world_time!(world)
     @inbounds for src in world.sources # források bejárása
-        src.radii[] = update_radii!(src.radii[], src.bas_t, world.t[], world.density)  # sugarpuffer frissítése
+        src.radii[] = update_radii!(src, world)  # sugarpuffer frissítése
     end
 end
 
@@ -94,17 +94,31 @@ end
 
 # Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
-function update_radii!(radii::Vector{Float64}, bas_t::Float64, t::Float64, density::Float64)
-    dt_rel = (t - bas_t)                        # relatív idő az indulástól
-    K = ceil(Int, dt_rel * density)             # aktív sugarak száma
+function update_radii!(src::Source, world)
+    radii = src.radii[]                         # sugárpuffer
+    dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
+    K = ceil(Int, dt_rel * world.density)       # aktív sugarak száma
     @inbounds begin
         for i in 1:K                            # aktív szegmensek frissítése
-            radii[i] = dt_rel - (i-1)/density   # sugár idő az i. impulzushoz
+            radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
+            apply_wave_hit!(src, world, i, r)
         end
         N = length(radii)                       # pufferhossz
     K < N && fill!(view(radii, K+1:N), 0.0)     # inaktív szakasz nullázása
     end
     return radii                                # frissített puffer
+end
+
+# Hullámtéri találat: kifelé igazítja a cél RV-jét
+function apply_wave_hit!(src::Source, world, i::Int, r::Float64)
+    p  = SVector(src.positions[i]...)           # aktuális impulzus középpontja
+    r2 = r * r                                  # sugár négyzete gyors összehasonlításhoz
+    for tgt in world.sources                    # minden forrás ellenőrzése (self is)
+        dir = tgt.act_p - p                     # irányvektor a cél akt_p felé
+        d2  = sum(abs2, dir)                    # távolság négyzete
+        d2 <= r2 || continue                    # csak ha a gömbön belül van
+        # TODO: komplexebb RV-kezelés kell ide (irány/nagyság frissítés)
+    end
 end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
