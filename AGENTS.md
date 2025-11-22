@@ -21,6 +21,10 @@ D) Parancsprotokoll (ACK/NOP + célzás):
 - Tartomány: `ACK:KOM source.jl 31:41` csak a megadott sorokra.
 - `NOP:...` = csak javasolj, ne módosíts.
 
+E) Elméleti javaslat: 
+- theory.md hivatkozásával tehetsz elméleti javaslatot, visszakérdezhetsz;
+- szabad kezet kapsz, theory.md-t NOP mellett is módosíthatod.
+
 2 KÓDOLÁSI SZABÁLYOK, PARANCSOK
 
 A) KOM - Kommentelési szabályok:
