@@ -104,7 +104,7 @@ function update_radii!(src::Source, world)
             apply_wave_hit!(src, world, i, r)
         end
         N = length(radii)                       # pufferhossz
-    K < N && fill!(view(radii, K+1:N), 0.0)     # inaktív szakasz nullázása
+        K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatkerésnél szükséges. Amúgy érdemes átlépni.
     end
     return radii                                # frissített puffer
 end
@@ -117,7 +117,22 @@ function apply_wave_hit!(src::Source, world, i::Int, r::Float64)
         dir = tgt.act_p - p                     # irányvektor a cél akt_p felé
         d2  = sum(abs2, dir)                    # távolság négyzete
         d2 <= r2 || continue                    # csak ha a gömbön belül van
-        # TODO: komplexebb RV-kezelés kell ide (irány/nagyság frissítés)
+        hit_mag = sqrt(d2)                      # találati irány hossza
+        hit_mag == 0 && continue                # nulla irány: nincs frissítés
+        hit_u = dir / hit_mag                   # találati irány egységvektora
+        axis = i < length(src.positions) ? SVector(src.positions[i+1]...) - p : src.RV  # időtengely vektora
+        axis_mag = sqrt(sum(abs2, axis))        # időtengely hossza
+        axis_mag == 0 && continue               # ha nincs időtengely, lépjünk tovább
+        axis_u = axis / axis_mag                # időtengely egységvektora
+        cosθ = clamp(sum(hit_u .* axis_u), -1.0, 1.0)  # szög koszinusz a képlethez
+        base_mag = sqrt(sum(abs2, tgt.RV))      # eredeti RV nagyság
+        base_mag == 0 && continue               # nulla RV: nincs módosítás
+        tgt.RV = hit_u * base_mag               # irány frissítés, nagyság megtartva
+        if i < length(tgt.positions)            # csak ha van következő pont 
+            step = tgt.RV / world.density       # lépésvektor az új iránnyal
+            tgt.positions[i+1] = Point3d((tgt.positions[i] + step)...) # következő pont frissítése TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
+            tgt.plot[:positions][] = tgt.positions  # plot pozíciók frissítése
+        end
     end
 end
 
