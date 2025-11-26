@@ -101,7 +101,7 @@ function update_radii!(src::Source, world)
     @inbounds begin
         for i in 1:K                            # aktív szegmensek frissítése
             radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
-            apply_wave_hit!(src, world, i, r)
+            #apply_wave_hit!(src, world, i, r)
         end
         N = length(radii)                       # pufferhossz
         K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatkerésnél szükséges. Amúgy érdemes átlépni.
@@ -111,26 +111,46 @@ end
 
 # Hullámtéri találat: kifelé igazítja a cél RV-jét
 function apply_wave_hit!(src::Source, world, i::Int, r::Float64)
-    p  = SVector(src.positions[i]...)           # aktuális impulzus középpontja
-    r2 = r * r                                  # sugár négyzete gyors összehasonlításhoz
-    for tgt in world.sources                    # minden forrás ellenőrzése (self is)
-        dir = tgt.act_p - p                     # irányvektor a cél akt_p felé
-        d2  = sum(abs2, dir)                    # távolság négyzete
-        d2 <= r2 || continue                    # csak ha a gömbön belül van
-        hit_mag = sqrt(d2)                      # találati irány hossza
-        hit_mag == 0 && continue                # nulla irány: nincs frissítés
-        hit_u = dir / hit_mag                   # találati irány egységvektora
-        axis = i < length(src.positions) ? SVector(src.positions[i+1]...) - p : src.RV  # időtengely vektora
-        axis_mag = sqrt(sum(abs2, axis))        # időtengely hossza
-        axis_mag == 0 && continue               # ha nincs időtengely, lépjünk tovább
-        axis_u = axis / axis_mag                # időtengely egységvektora
-        cosθ = clamp(sum(hit_u .* axis_u), -1.0, 1.0)  # szög koszinusz a képlethez
-        base_mag = sqrt(sum(abs2, tgt.RV))      # eredeti RV nagyság
-        base_mag == 0 && continue               # nulla RV: nincs módosítás
-        tgt.RV = hit_u * base_mag               # irány frissítés, nagyság megtartva
-        if i < length(tgt.positions)            # csak ha van következő pont 
-            step = tgt.RV / world.density       # lépésvektor az új iránnyal
-            tgt.positions[i+1] = Point3d((tgt.positions[i] + step)...) # következő pont frissítése TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
+    p  = SVector(src.positions[i]...)               # aktuális impulzus középpontja
+    r2 = r * r                                      # aktuális impulzus sugárának négyzete gyors összehasonlításhoz
+    for tgt in world.sources                        # ütközésvizsgálat minden forrásra (self is)
+        to_tgt = tgt.act_p - p                      # irányvektor: p -> tgt.akt_p
+        to_tgt2  = sum(abs2, to_tgt)                # to_tgt irányvektor hosszának a négyzete gyors összehasonlításhoz
+        to_tgt2 <= r2 || continue                   # csak akkor megyünk tovább, ha to_tgt2 ≤ r2 (gömbön belül)
+
+        # ütközés történt, to_tgt egységvektorának meghatározása
+        to_tgt_mag = sqrt(to_tgt2)                  # to_tgt irányvektor hossza
+        to_tgt_u = to_tgt / to_tgt_mag              # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
+
+        # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
+        src_rv_dir = i < length(src.positions) ? SVector(src.positions[i+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+        src_rv_dir_mag = sqrt(sum(abs2, src_rv_dir))# src.RV irányvektor hossza
+        src_rv_u = src_rv_dir / src_rv_dir_mag      # src.RV egységvektora TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
+
+        # múlttérsűrűség és taszítási vektor számítás
+        cosθ = sum(to_tgt_u .* src_rv_u)            # két egységvektor (to_tgt_u, t_axis_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
+        src_rv_mag = src_rv_dir_mag * world.density # src.RV nagyság közelítése a diszkrét lépésből
+        src_impulse_gap = world.E - cosθ * src_rv_mag# két impulzus távolsága TODO: E csak is 1 lehet, E skálázása helyett inkább anim sebességet kellene bevezetni!
+        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség, a forrás lepattan, erről a szféráról. TODO: Érdemes lenne inkább Max(Float64-t beállítani, hogy ténylegesen megtörténjen ez a lepattanás.
+        ρ = 1 / abs(src_impulse_gap)                # múlttérsűrűség
+        src_v = to_tgt_u * ρ                        # taszítási vektor
+
+        # forgató eltolás
+        rot_dir = cross(src_rv_u, to_tgt_u)         # forgástengellyel és találattal derékszögben
+        rot_mag = sqrt(sum(abs2, rot_dir))          # forgás irány hossz
+        rot = rot_mag == 0 ? rot_dir : rot_dir / rot_mag * src.RR
+
+        # erdővektor számítás és tgt.RV irányba állítása
+        tgt_step = (tgt.RV + src_v + rot) / world.density # ez az eredő vektor, ezt kell hozzáani tgt.positions[i]-hoz
+        tgt_rv_mag = sqrt(sum(abs2, tgt.RV))        # aktuális tgt.RV hossza
+        tgt_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
+        tgt_step_mag = sqrt(sum(abs2, tgt_step))            # step hossza
+        tgt_step_mag == 0 && continue                   # nulla step: nincs irány
+        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag       # új irány: step irányába, eredeti nagysággal
+        
+        #TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
+        if i < length(tgt.positions)                # csak ha van következő pont 
+            tgt.positions[i+1] = Point3d((tgt.positions[i] + tgt_step)...) # következő pont frissítése
             tgt.plot[:positions][] = tgt.positions  # plot pozíciók frissítése
         end
     end

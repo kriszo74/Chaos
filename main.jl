@@ -55,6 +55,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
                 src.radii[] = update_radii!(src, world)
+                # itt legyen apply_wave_hit! hívás
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
