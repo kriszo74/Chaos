@@ -3,6 +3,7 @@ using StaticArrays
 using GeometryBasics
 using Colors
 using Observables  # Observable támogatás
+using Infiltrator
 
 # rendszer-paraméterek
 const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
@@ -55,7 +56,7 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
                 src.radii[] = update_radii!(src, world)
-                # itt legyen apply_wave_hit! hívás
+                apply_wave_hit!(src, world)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used

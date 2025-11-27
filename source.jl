@@ -6,7 +6,7 @@
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
-    RV::SVector{3, Float64}      # sebesség vektor
+    RV::SVector{3, Float64}      # sebesség vektor TODO: RV-t külön tároljuk egységvektorként, amelyből származtatjuk a tényleges vektort.
     RR::Float64                  # saját tengely körüli szögszerű paraméter (skalár, fénysebességhez viszonyítható)
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
@@ -110,28 +110,45 @@ function update_radii!(src::Source, world)
 end
 
 # Hullámtéri találat: kifelé igazítja a cél RV-jét
-function apply_wave_hit!(src::Source, world, i::Int, r::Float64)
-    p  = SVector(src.positions[i]...)               # aktuális impulzus középpontja
-    r2 = r * r                                      # aktuális impulzus sugárának négyzete gyors összehasonlításhoz
+function apply_wave_hit!(src::Source, world)
+    radii = src.radii[]
     for tgt in world.sources                        # ütközésvizsgálat minden forrásra (self is)
+        best_k = 0; best_gap = typemax(Float64); best_r2 = 0.0
+        @inbounds for k in eachindex(radii)
+            rk = radii[k]
+            rk <= 0 && continue
+            r2k = rk * rk
+            d2k = sum(abs2, SVector(src.positions[k]...) - tgt.act_p)
+            gap = abs(r2k - d2k)
+            gap < best_gap || continue
+            best_gap = gap
+            best_k = k
+            best_r2 = r2k
+        end
+        best_k == 0 && continue
+        p  = SVector(src.positions[best_k]...)      # legközelebbi impulzus középpontja
+        r2 = best_r2                                # legközelebbi impulzus sugárának négyzete
+
         to_tgt = tgt.act_p - p                      # irányvektor: p -> tgt.akt_p
         to_tgt2  = sum(abs2, to_tgt)                # to_tgt irányvektor hosszának a négyzete gyors összehasonlításhoz
         to_tgt2 <= r2 || continue                   # csak akkor megyünk tovább, ha to_tgt2 ≤ r2 (gömbön belül)
 
         # ütközés történt, to_tgt egységvektorának meghatározása
         to_tgt_mag = sqrt(to_tgt2)                  # to_tgt irányvektor hossza
+        to_tgt_mag == 0 && continue
         to_tgt_u = to_tgt / to_tgt_mag              # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
         # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-        src_rv_dir = i < length(src.positions) ? SVector(src.positions[i+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+        src_rv_dir = best_k < length(src.positions) ? SVector(src.positions[best_k+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
         src_rv_dir_mag = sqrt(sum(abs2, src_rv_dir))# src.RV irányvektor hossza
+        src_rv_dir_mag == 0 && continue
         src_rv_u = src_rv_dir / src_rv_dir_mag      # src.RV egységvektora TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
 
         # múlttérsűrűség és taszítási vektor számítás
         cosθ = sum(to_tgt_u .* src_rv_u)            # két egységvektor (to_tgt_u, t_axis_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
         src_rv_mag = src_rv_dir_mag * world.density # src.RV nagyság közelítése a diszkrét lépésből
         src_impulse_gap = world.E - cosθ * src_rv_mag# két impulzus távolsága TODO: E csak is 1 lehet, E skálázása helyett inkább anim sebességet kellene bevezetni!
-        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség, a forrás lepattan, erről a szféráról. TODO: Érdemes lenne inkább Max(Float64-t beállítani, hogy ténylegesen megtörténjen ez a lepattanás.
+        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség, a forrás mintha egy labda falnak ütközne. Igazából ennek is van egy matematikája, a density-t a végtelenhez közelítjük.
         ρ = 1 / abs(src_impulse_gap)                # múlttérsűrűség
         src_v = to_tgt_u * ρ                        # taszítási vektor
 
@@ -140,17 +157,17 @@ function apply_wave_hit!(src::Source, world, i::Int, r::Float64)
         rot_mag = sqrt(sum(abs2, rot_dir))          # forgás irány hossz
         rot = rot_mag == 0 ? rot_dir : rot_dir / rot_mag * src.RR
 
-        # erdővektor számítás és tgt.RV irányba állítása
-        tgt_step = (tgt.RV + src_v + rot) / world.density # ez az eredő vektor, ezt kell hozzáani tgt.positions[i]-hoz
+        # eredő vektor számítás és tgt.RV irányba állítása
+        tgt_step = (tgt.RV + src_v + rot) / world.density # ez az eredő vektor, ezt kell hozzáadni tgt.positions[k]-hoz
         tgt_rv_mag = sqrt(sum(abs2, tgt.RV))        # aktuális tgt.RV hossza
         tgt_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
-        tgt_step_mag = sqrt(sum(abs2, tgt_step))            # step hossza
-        tgt_step_mag == 0 && continue                   # nulla step: nincs irány
-        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag       # új irány: step irányába, eredeti nagysággal
+        tgt_step_mag = sqrt(sum(abs2, tgt_step))    # step hossza
+        tgt_step_mag == 0 && continue               # nulla step: nincs irány
+        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag# új irány: step irányába, eredeti nagysággal
         
         #TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
-        if i < length(tgt.positions)                # csak ha van következő pont 
-            tgt.positions[i+1] = Point3d((tgt.positions[i] + tgt_step)...) # következő pont frissítése
+        if best_k < length(tgt.positions)           # csak ha van következő pont 
+            tgt.positions[best_k+1] = Point3d((tgt.positions[best_k] + tgt_step)...) # következő pont frissítése
             tgt.plot[:positions][] = tgt.positions  # plot pozíciók frissítése
         end
     end
