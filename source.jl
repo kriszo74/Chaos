@@ -119,7 +119,7 @@ function apply_wave_hit!(src::Source, world)
             rk <= 0 && continue
             r2k = rk * rk
             d2k = sum(abs2, SVector(src.positions[k]...) - tgt.act_p)
-            gap = abs(r2k - d2k)
+            gap = abs(r2k - d2k) #TODO: nem jó az abszolút érték, mert leheséges, hogy emiatt nem teljesöl to_tgt2 <= r2
             gap < best_gap || continue
             best_gap = gap
             best_k = k
