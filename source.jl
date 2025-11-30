@@ -101,7 +101,6 @@ function update_radii!(src::Source, world)
     @inbounds begin
         for i in 1:K                            # aktív szegmensek frissítése
             radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
-            #apply_wave_hit!(src, world, i, r)
         end
         N = length(radii)                       # pufferhossz
         K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatkerésnél szükséges. Amúgy érdemes átlépni.
@@ -139,15 +138,11 @@ function apply_wave_hit!(src::Source, world)
         to_tgt2 <= r2 || continue                   # csak akkor megyünk tovább, ha to_tgt2 ≤ r2 (gömbön belül)
 
         # ütközés történt, to_tgt egységvektorának meghatározása
-        to_tgt_mag = sqrt(to_tgt2)                  # to_tgt irányvektor hossza
-        to_tgt_mag == 0 && continue
-        to_tgt_u = to_tgt / to_tgt_mag              # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
+        to_tgt_u, _ = unit_and_mag(to_tgt); isnothing(to_tgt_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
         # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
         src_rv_dir = k < length(src.positions) ? SVector(src.positions[k+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
-        src_rv_dir_mag = sqrt(sum(abs2, src_rv_dir))# src.RV irányvektor hossza
-        src_rv_dir_mag == 0 && continue
-        src_rv_u = src_rv_dir / src_rv_dir_mag      # src.RV egységvektora TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
+        src_rv_u, src_rv_dir_mag = unit_and_mag(src_rv_dir); isnothing(src_rv_u) && continue # src.RV egységvektora és hossza TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
 
         # múlttérsűrűség és taszítási vektor számítás
         cosθ = sum(to_tgt_u .* src_rv_u)            # két egységvektor (to_tgt_u, t_axis_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
@@ -159,8 +154,8 @@ function apply_wave_hit!(src::Source, world)
 
         # forgató eltolás
         rot_dir = cross(src_rv_u, to_tgt_u)         # forgástengellyel és találattal derékszögben
-        rot_mag = sqrt(sum(abs2, rot_dir))          # forgás irány hossz
-        rot = rot_mag == 0 ? rot_dir : rot_dir / rot_mag * src.RR
+        rot_u, _ = unit_and_mag(rot_dir)
+        rot = isnothing(rot_u) ? rot_dir : rot_u * src.RR
 
         # eredő vektor számítás és tgt.RV irányba állítása
         tgt_step = (tgt.RV + src_v + rot) / world.density # ez az eredő vektor, ezt kell hozzáadni tgt.positions[k]-hoz
@@ -168,14 +163,7 @@ function apply_wave_hit!(src::Source, world)
         tgt_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
         tgt_step_mag = sqrt(sum(abs2, tgt_step))    # step hossza
         tgt_step_mag == 0 && continue               # nulla step: nincs irány
-        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag# új irány: step irányába, eredeti nagysággal
-        
-        #TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
-        if k < length(tgt.positions)           # csak ha van következő pont 
-            tgt.positions[k+1] = Point3d((tgt.positions[k] + tgt_step)...) # következő pont frissítése
-            tgt.plot[:positions][] = tgt.positions  # plot pozíciók frissítése
-            #@infiltrate
-        end
+        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
     end
 end
 

@@ -56,6 +56,13 @@ function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
     return GeometryBasics.Mesh((position = verts, normal = normals, uv = uvs), faces)
 end
 
+# egységvektor és hossz kiszámítása
+function unit_and_mag(v::SVector{3,Float64})
+    v === SVector(0.0,0.0,0.0) && return (nothing, nothing)
+    mag = sqrt(sum(abs2, v))
+    return (v / mag, mag)
+end
+
 # Jelenet (Scene) létrehozása – ortografikus kamera
 function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
     GLMakie.activate!(; focus_on_show=true, title="Chaos")

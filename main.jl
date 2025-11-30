@@ -54,10 +54,18 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             tprev = time_ns()/1e9
             world.t[] += step = world.E * dt
             world.t[] > world.max_t && break
+
+            #TODO: beolvasztani apply_world_time!-ba ezt a 3 ciklust.
+            for src in world.sources
+                src.radii[] = update_radii!(src, world) 
+            end
+            for src in world.sources
+                apply_wave_hit!(src, world)
+            end
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
-                src.radii[] = update_radii!(src, world)
-                apply_wave_hit!(src, world)
+                #src.positions[1] = Point3d(src.act_p...) #TODO pályaregeneráció csak interaktív módban. csak a r > 0 pályát generáljuk le.
+                #apply_pose!(src, world)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
