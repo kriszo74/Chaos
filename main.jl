@@ -1,4 +1,5 @@
 using GLMakie
+using LinearAlgebra
 using StaticArrays
 using GeometryBasics
 using Colors

@@ -113,24 +113,29 @@ end
 function apply_wave_hit!(src::Source, world)
     radii = src.radii[]
     for tgt in world.sources                        # ütközésvizsgálat minden forrásra (self is)
-        best_k = 0; best_gap = typemax(Float64); best_r2 = 0.0
-        @inbounds for k in eachindex(radii)
-            rk = radii[k]
-            rk <= 0 && continue
-            r2k = rk * rk
-            d2k = sum(abs2, SVector(src.positions[k]...) - tgt.act_p)
-            gap = abs(r2k - d2k) #TODO: nem jó az abszolút érték, mert leheséges, hogy emiatt nem teljesöl to_tgt2 <= r2
-            gap < best_gap || continue
-            best_gap = gap
-            best_k = k
-            best_r2 = r2k
+        k = 0; gap = typemax(Float64); r2 = 0.0
+        @inbounds for act_k in eachindex(radii)
+            ract_k = radii[act_k]
+            ract_k == 0 && break
+            
+            # r^2 és célpont távolság^2 különbség számítása
+            r2act_k = ract_k * ract_k       # a vizsgált impulzus sugárának négyzete
+            d2k = sum(abs2, SVector(src.positions[act_k]...) - tgt.act_p)
+            act_gap = r2act_k - d2k
+            
+            # pozitív, legkisebb rádiusz-gap választása
+            if act_gap < 0 || act_gap >= gap; continue; end
+            gap = act_gap
+            k = act_k
+            r2 = r2act_k   # a legközelebbi impulzus sugárának négyzete
         end
-        best_k == 0 && continue
-        p  = SVector(src.positions[best_k]...)      # legközelebbi impulzus középpontja
-        r2 = best_r2                                # legközelebbi impulzus sugárának négyzete
+        @info "k = $(k)"
+        k == 0 && continue
+        p  = SVector(src.positions[k]...)           # legközelebbi impulzus középpontja
 
         to_tgt = tgt.act_p - p                      # irányvektor: p -> tgt.akt_p
         to_tgt2  = sum(abs2, to_tgt)                # to_tgt irányvektor hosszának a négyzete gyors összehasonlításhoz
+        @info "to_tgt2 = $(to_tgt2), r2 = $(r2))"
         to_tgt2 <= r2 || continue                   # csak akkor megyünk tovább, ha to_tgt2 ≤ r2 (gömbön belül)
 
         # ütközés történt, to_tgt egységvektorának meghatározása
@@ -139,7 +144,7 @@ function apply_wave_hit!(src::Source, world)
         to_tgt_u = to_tgt / to_tgt_mag              # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
         # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-        src_rv_dir = best_k < length(src.positions) ? SVector(src.positions[best_k+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+        src_rv_dir = k < length(src.positions) ? SVector(src.positions[k+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
         src_rv_dir_mag = sqrt(sum(abs2, src_rv_dir))# src.RV irányvektor hossza
         src_rv_dir_mag == 0 && continue
         src_rv_u = src_rv_dir / src_rv_dir_mag      # src.RV egységvektora TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
@@ -148,7 +153,7 @@ function apply_wave_hit!(src::Source, world)
         cosθ = sum(to_tgt_u .* src_rv_u)            # két egységvektor (to_tgt_u, t_axis_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
         src_rv_mag = src_rv_dir_mag * world.density # src.RV nagyság közelítése a diszkrét lépésből
         src_impulse_gap = world.E - cosθ * src_rv_mag# két impulzus távolsága TODO: E csak is 1 lehet, E skálázása helyett inkább anim sebességet kellene bevezetni!
-        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség, a forrás mintha egy labda falnak ütközne. Igazából ennek is van egy matematikája, a density-t a végtelenhez közelítjük.
+        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség. TODO: a forrás mintha egy labda falnak ütközne. Igazából ennek is van egy matematikája, a density-t a végtelenhez közelítjük.
         ρ = 1 / abs(src_impulse_gap)                # múlttérsűrűség
         src_v = to_tgt_u * ρ                        # taszítási vektor
 
@@ -166,9 +171,10 @@ function apply_wave_hit!(src::Source, world)
         tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag# új irány: step irányába, eredeti nagysággal
         
         #TODO: a pálya frissítését compute_positions/apply_pose! kezelje!
-        if best_k < length(tgt.positions)           # csak ha van következő pont 
-            tgt.positions[best_k+1] = Point3d((tgt.positions[best_k] + tgt_step)...) # következő pont frissítése
+        if k < length(tgt.positions)           # csak ha van következő pont 
+            tgt.positions[k+1] = Point3d((tgt.positions[k] + tgt_step)...) # következő pont frissítése
             tgt.plot[:positions][] = tgt.positions  # plot pozíciók frissítése
+            #@infiltrate
         end
     end
 end
