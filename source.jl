@@ -109,61 +109,66 @@ function update_radii!(src::Source, world)
 end
 
 # Hullámtéri találat: kifelé igazítja a cél RV-jét
-function apply_wave_hit!(src::Source, world)
-    radii = src.radii[]
-    for tgt in world.sources                        # ütközésvizsgálat minden forrásra (self is)
-        k = 0; gap = typemax(Float64); r2 = 0.0
-        @inbounds for act_k in eachindex(radii)
-            ract_k = radii[act_k]
-            ract_k == 0 && break
+const eps_tol = 1e-9
+function apply_wave_hit!(emt::Source, world)
+    emt_radii = emt.radii[]                 # emmiter (emt) sugárpuffer pillanatképe
+    for rcv in world.sources                # ütközésvizsgálat minden forrásra (self is)
+        emt_k = 0; min_gap2 = typemax(Float64); r2_min_emt = to_rcv2 = 0.0; emt_p = to_rcv = SVector(0.0, 0.0, 0.0);
+        @inbounds for erix in eachindex(emt_radii)  # erix: Emmitter (emt) Radius (radii) IndeX
+            r_erix = emt_radii[erix]        # aktuális emitter impulzus sugara
+            r_erix == 0 && break            # az első 0 után a maradék is inaktív, kilépünk a ciklusból
             
             # r^2 és célpont távolság^2 különbség számítása
-            r2act_k = ract_k * ract_k       # a vizsgált impulzus sugárának négyzete
-            d2k = sum(abs2, SVector(src.positions[act_k]...) - tgt.act_p)
-            act_gap = r2act_k - d2k
+            r2_erix = r_erix * r_erix               # a vizsgált emitter impulzus sugárának négyzete
+            p_erix  = SVector(emt.positions[erix]...)   # a vizsgált emitter impulzus középpontja
+            to_rcv_erix = rcv.act_p - p_erix        # irányvektor: p (a vizsgált emitter impulzus középpontja) -> rcv.akt_p
+            to_rcv2_erix = sum(abs2, to_rcv_erix)   # a vizsgált emitter impulzus középpontja és receiver forrás távolság^2-e
+            act_gap2 = r2_erix - to_rcv2_erix       # r^2 és távolság^2 különbsége
+            #@info "emt.act_p = $(emt.act_p), rcv.act_p = $(rcv.act_p), act_gap2 = $(act_gap2)"; @infiltrate
             
-            # pozitív, legkisebb rádiusz-gap választása
-            if act_gap < 0 || act_gap >= gap; continue; end
-            gap = act_gap
-            k = act_k
-            r2 = r2act_k   # a legközelebbi impulzus sugárának négyzete
+            # pozitív, legkisebb rádiusz-gap feljegyzése
+            if act_gap2 < 0 || act_gap2 >= min_gap2; continue; end # nem ütközik vagy nem ez a legközelebbi
+            min_gap2 = act_gap2             # új legkisebb rádiusz-gap, amely emitter impulzuson beül van.
+            emt_k = erix                    # a legkisebb rádiusz-gap-hoz tartozó index (erix)
+            r2_min_emt = r2_erix            # a legközelebbi impulzus sugárának négyzete
+            emt_p = p_erix                  # a legközelebbi impulzus középpontja
+            to_rcv = to_rcv_erix            # a legkisebb irányvektor: emt_p -> rcv.akt_p
+            to_rcv2 = to_rcv2_erix          # a legközelebbi impulzus középpontja és receiver forrás távolság^2-e
+            #@info "min_gap2 = $(min_gap2)"; @infiltrate
         end
-        @info "k = $(k)"
-        k == 0 && continue
-        p  = SVector(src.positions[k]...)           # legközelebbi impulzus középpontja
-
-        to_tgt = tgt.act_p - p                      # irányvektor: p -> tgt.akt_p
-        to_tgt2  = sum(abs2, to_tgt)                # to_tgt irányvektor hosszának a négyzete gyors összehasonlításhoz
-        @info "to_tgt2 = $(to_tgt2), r2 = $(r2))"
-        to_tgt2 <= r2 || continue                   # csak akkor megyünk tovább, ha to_tgt2 ≤ r2 (gömbön belül)
+        @info "emt.act_p = $(emt.act_p), rcv.act_p = $(rcv.act_p), emt_k = $(emt_k), to_rcv2 = $(to_rcv2), r2_min_emt_k = $(r2_min_emt))"; @infiltrate
+        if emt_k == 0 || to_rcv2 < eps_tol || r2_min_emt - to_rcv2 < eps_tol; continue; end
+        # TODO: számold a relatív sebesség radiális komponensét, és ha kifelé megy (dot(to_rcv_u, rcv.RV) ≥ 0), akkor continue; így csak befelé haladva érvényesül az impulzus.
 
         # ütközés történt, to_tgt egységvektorának meghatározása
-        to_tgt_u, _ = unit_and_mag(to_tgt); isnothing(to_tgt_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
+        @info "ütközés történt"; @infiltrate
+        to_rcv_u, _ = unit_and_mag(to_rcv); isnothing(to_rcv_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
         # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-        src_rv_dir = k < length(src.positions) ? SVector(src.positions[k+1]...) - p : src.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
-        src_rv_u, src_rv_dir_mag = unit_and_mag(src_rv_dir); isnothing(src_rv_u) && continue # src.RV egységvektora és hossza TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
+        emt_rv_dir = emt_k < length(emt.positions) ? SVector(emt.positions[emt_k+1]...) - emt_p : emt.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+        emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir); isnothing(emt_rv_u) && continue # src.RV egységvektora és hossza TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
 
         # múlttérsűrűség és taszítási vektor számítás
-        cosθ = sum(to_tgt_u .* src_rv_u)            # két egységvektor (to_tgt_u, t_axis_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
-        src_rv_mag = src_rv_dir_mag * world.density # src.RV nagyság közelítése a diszkrét lépésből
-        src_impulse_gap = world.E - cosθ * src_rv_mag# két impulzus távolsága TODO: E csak is 1 lehet, E skálázása helyett inkább anim sebességet kellene bevezetni!
-        src_impulse_gap == 0 && continue            # végetelen múlttérsűrűség. TODO: a forrás mintha egy labda falnak ütközne. Igazából ennek is van egy matematikája, a density-t a végtelenhez közelítjük.
-        ρ = 1 / abs(src_impulse_gap)                # múlttérsűrűség
-        src_v = to_tgt_u * ρ                        # taszítási vektor
+        cosθ = sum(to_rcv_u .* emt_rv_u)           # két egységvektor (to_rcv_u, emt_rv_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
+        emt_rv_mag = emt_rv_dir_mag * world.density# src.RV nagyság közelítése a diszkrét lépésből
+        emt_impulse_gap = world.E - cosθ * emt_rv_mag# két impulzus távolsága TODO: E csak is 1 lehet, E skálázása helyett inkább anim sebességet kellene bevezetni!
+        emt_impulse_gap == 0 && continue           # végetelen múlttérsűrűség. TODO: a forrás mintha egy labda falnak ütközne. Igazából ennek is van egy matematikája, a density-t a végtelenhez közelítjük.
+        ρ = 1 / abs(emt_impulse_gap)               # múlttérsűrűség
+        emt_v = to_rcv_u * ρ                       # taszítási vektor
 
         # forgató eltolás
-        rot_dir = cross(src_rv_u, to_tgt_u)         # forgástengellyel és találattal derékszögben
-        rot_u, _ = unit_and_mag(rot_dir)
-        rot = isnothing(rot_u) ? rot_dir : rot_u * src.RR
+        emt_rot_dir = cross(emt_rv_u, to_rcv_u)    # forgástengellyel és találattal derékszögben
+        emt_rot_u, _ = unit_and_mag(emt_rot_dir)
+        emt_rot = isnothing(emt_rot_u) ? emt_rot_dir : emt_rot_u * emt.RR
 
         # eredő vektor számítás és tgt.RV irányba állítása
-        tgt_step = (tgt.RV + src_v + rot) / world.density # ez az eredő vektor, ezt kell hozzáadni tgt.positions[k]-hoz
-        tgt_rv_mag = sqrt(sum(abs2, tgt.RV))        # aktuális tgt.RV hossza
-        tgt_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
-        tgt_step_mag = sqrt(sum(abs2, tgt_step))    # step hossza
-        tgt_step_mag == 0 && continue               # nulla step: nincs irány
-        tgt.RV = tgt_step / tgt_step_mag * tgt_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
+        rcv_step = (rcv.RV + emt_v + emt_rot) / world.density # ez az eredő vektor, ezt kell hozzáadni rcv.positions[k]-hoz
+        rcv_rv_mag = sqrt(sum(abs2, rcv.RV))        # aktuális rcv.RV hossza
+        rcv_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
+        rcv_step_mag = sqrt(sum(abs2, rcv_step))    # step hossza
+        rcv_step_mag == 0 && continue               # nulla step: nincs irány
+        rcv.RV = rcv_step / rcv_step_mag * rcv_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
+        @infiltrate
     end
 end
 

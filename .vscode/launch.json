@@ -8,7 +8,7 @@
       "program": "${workspaceFolder}/main.jl",
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",
-      "env": {},
+      "env": { "INFILTRATE_ON": "1" },
       "juliaEnv": "${command:activeJuliaEnvironment}"
     },
     {

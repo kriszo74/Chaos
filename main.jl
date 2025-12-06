@@ -7,7 +7,7 @@ using Observables  # Observable támogatás
 using Infiltrator
 
 # rendszer-paraméterek
-const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1"  # set APP_DEBUG=1 -> debug
+const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
 @info "DEBUG_MODE" DEBUG_MODE
 
 # Debug-only assert macro (0 overhead in release)
@@ -64,8 +64,9 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             end
             for src in world.sources
                 src.act_p = src.act_p + src.RV * step
+                @info "src.act_p = $(src.act_p)"; @infiltrate
                 #src.positions[1] = Point3d(src.act_p...) #TODO pályaregeneráció csak interaktív módban. csak a r > 0 pályát generáljuk le.
-                #apply_pose!(src, world)
+                apply_pose!(src, world)
             end
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
