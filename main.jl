@@ -56,22 +56,24 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             world.t[] > world.max_t && break
 
             #TODO: beolvasztani apply_world_time!-ba ezt a 3 ciklust.
-            for src in world.sources
-                src.radii[] = update_radii!(src, world) 
-            end
-            for src in world.sources
-                apply_wave_hit!(src, world)
-            end
-            for src in world.sources
-                src.act_p = src.act_p + src.RV * step
-                @info "src.act_p = $(src.act_p)"; @infiltrate
-                #src.positions[1] = Point3d(src.act_p...) #TODO pályaregeneráció csak interaktív módban. csak a r > 0 pályát generáljuk le.
-                apply_pose!(src, world)
-            end
-            frame_used = (time_ns()/1e9) - tprev
-            rem = target - frame_used
-            rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
-            @static if !DEBUG_MODE; dt = max(target, frame_used); end
+        for src in world.sources
+            src.radii[] = update_radii!(src, world) 
+        end
+        for src in world.sources
+            apply_wave_hit!(src, world)
+        end
+        for src in world.sources
+            p_ix = min(src.act_k + 1, length(src.positions))
+            act_pos = src.act_p + src.RV * step
+            src.positions[p_ix] = Point3d(act_pos...)
+            src.plot[:positions][] = src.positions
+            src.act_p = act_pos
+            @info "src.RV = $(src.RV)"; @infiltrate
+        end
+        frame_used = (time_ns()/1e9) - tprev
+        rem = target - frame_used
+        rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
+        @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
         rt.paused[] = true
         world.t[] = 0.0

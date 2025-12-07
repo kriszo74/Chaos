@@ -6,6 +6,7 @@
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
+    act_k::Int                   # aktuális index
     RV::SVector{3, Float64}      # sebesség vektor TODO: RV-t külön tároljuk egységvektorként, amelyből származtatjuk a tényleges vektort.
     RR::Float64                  # saját tengely körüli szögszerű paraméter (skalár, fénysebességhez viszonyítható)
     bas_t::Float64               # indulási idő
@@ -20,6 +21,7 @@ end
 function add_source!(world, gctx, spec; abscol::Int)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
+        0,                                      # aktuális index
         SVector(spec.RV, 0.0, 0.0),             # kezdő RV vektor
         spec.RR,                                # saját tengely körüli RR
         0.0,                                    # indulási idő
@@ -98,12 +100,13 @@ function update_radii!(src::Source, world)
     radii = src.radii[]                         # sugárpuffer
     dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
     K = ceil(Int, dt_rel * world.density)       # aktív sugarak száma
+    src.act_k = K                               # aktuális index
     @inbounds begin
         for i in 1:K                            # aktív szegmensek frissítése
             radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
         end
         N = length(radii)                       # pufferhossz
-        K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatkerésnél szükséges. Amúgy érdemes átlépni.
+        K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatekerésnél szükséges. Amúgy érdemes átlépni.
     end
     return radii                                # frissített puffer
 end
@@ -124,7 +127,6 @@ function apply_wave_hit!(emt::Source, world)
             to_rcv_erix = rcv.act_p - p_erix        # irányvektor: p (a vizsgált emitter impulzus középpontja) -> rcv.akt_p
             to_rcv2_erix = sum(abs2, to_rcv_erix)   # a vizsgált emitter impulzus középpontja és receiver forrás távolság^2-e
             act_gap2 = r2_erix - to_rcv2_erix       # r^2 és távolság^2 különbsége
-            #@info "emt.act_p = $(emt.act_p), rcv.act_p = $(rcv.act_p), act_gap2 = $(act_gap2)"; @infiltrate
             
             # pozitív, legkisebb rádiusz-gap feljegyzése
             if act_gap2 < 0 || act_gap2 >= min_gap2; continue; end # nem ütközik vagy nem ez a legközelebbi
@@ -134,14 +136,12 @@ function apply_wave_hit!(emt::Source, world)
             emt_p = p_erix                  # a legközelebbi impulzus középpontja
             to_rcv = to_rcv_erix            # a legkisebb irányvektor: emt_p -> rcv.akt_p
             to_rcv2 = to_rcv2_erix          # a legközelebbi impulzus középpontja és receiver forrás távolság^2-e
-            #@info "min_gap2 = $(min_gap2)"; @infiltrate
         end
-        @info "emt.act_p = $(emt.act_p), rcv.act_p = $(rcv.act_p), emt_k = $(emt_k), to_rcv2 = $(to_rcv2), r2_min_emt_k = $(r2_min_emt))"; @infiltrate
         if emt_k == 0 || to_rcv2 < eps_tol || r2_min_emt - to_rcv2 < eps_tol; continue; end
         # TODO: számold a relatív sebesség radiális komponensét, és ha kifelé megy (dot(to_rcv_u, rcv.RV) ≥ 0), akkor continue; így csak befelé haladva érvényesül az impulzus.
 
         # ütközés történt, to_tgt egységvektorának meghatározása
-        @info "ütközés történt"; @infiltrate
+        @info "ÜTKÖZÉS: emt.act_p = $(emt.act_p), rcv.act_p = $(rcv.act_p), emt_k = $(emt_k), to_rcv2 = $(to_rcv2), r2_min_emt_k = $(r2_min_emt))"; @infiltrate
         to_rcv_u, _ = unit_and_mag(to_rcv); isnothing(to_rcv_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
         # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
@@ -168,7 +168,6 @@ function apply_wave_hit!(emt::Source, world)
         rcv_step_mag = sqrt(sum(abs2, rcv_step))    # step hossza
         rcv_step_mag == 0 && continue               # nulla step: nincs irány
         rcv.RV = rcv_step / rcv_step_mag * rcv_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
-        @infiltrate
     end
 end
 
@@ -177,6 +176,7 @@ function update_spherical_position!(distance::Float64, src::Source, world, ref_s
     ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
     dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + distance * dir            # új horgony pozíció távolság és irány szerint
+    src.act_k = 0                                   # aktuális index reset
     src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
 end
 
