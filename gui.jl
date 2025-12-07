@@ -151,8 +151,8 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                        end)
         end
     end
-    colsize!(gctx.sources_gl, 1, Relative(0.35))
-    colsize!(gctx.sources_gl, 2, Relative(0.5))
+    colsize!(gctx.sources_gl, 1, Relative(0.4))
+    colsize!(gctx.sources_gl, 2, Relative(0.45))
     colsize!(gctx.sources_gl, 3, Relative(0.15))
 end
 

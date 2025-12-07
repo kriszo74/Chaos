@@ -54,26 +54,11 @@ function start_sim!(fig, scene, world::World, rt::Runtime)
             tprev = time_ns()/1e9
             world.t[] += step = world.E * dt
             world.t[] > world.max_t && break
-
-            #TODO: beolvasztani apply_world_time!-ba ezt a 3 ciklust.
-        for src in world.sources
-            src.radii[] = update_radii!(src, world) 
-        end
-        for src in world.sources
-            apply_wave_hit!(src, world)
-        end
-        for src in world.sources
-            p_ix = min(src.act_k + 1, length(src.positions))
-            act_pos = src.act_p + src.RV * step
-            src.positions[p_ix] = Point3d(act_pos...)
-            src.plot[:positions][] = src.positions
-            src.act_p = act_pos
-            @info "src.RV = $(src.RV)"; @infiltrate
-        end
-        frame_used = (time_ns()/1e9) - tprev
-        rem = target - frame_used
-        rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
-        @static if !DEBUG_MODE; dt = max(target, frame_used); end
+            apply_world_time!(world; step)
+            frame_used = (time_ns()/1e9) - tprev
+            rem = target - frame_used
+            rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
+            @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
         rt.paused[] = true
         world.t[] = 0.0

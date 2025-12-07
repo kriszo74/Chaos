@@ -2,7 +2,7 @@ title = "Chaos GUI preset konfiguráció"
 version = "0.1.0"
 
 [gui]
-GUI_COL_W = 220
+GUI_COL_W = 240
 RR_MAX = 2.0
 RR_STEP = 0.1
 REF_NONE = 0
