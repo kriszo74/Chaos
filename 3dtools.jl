@@ -79,25 +79,28 @@ end
 const HUE30_NAMES = Dict{Int,Symbol}(0=>:red, 30=>:orange, 60=>:yellow, 90=>:chartreuse, 120=>:green, 150=>:springgreen, 180=>:cyan, 210=>:dodgerblue, 240=>:blue, 270=>:indigo, 300=>:magenta, 330=>:deeppink)
 
 # Atlasz 12 közép-hue-hoz; oszlopok r∈[0,1] (parts+1), sorok: neg/mid/pos.
-function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32; s::Float32=1f0, v::Float32=1f0) 
-    ncols = Int(floor(RR_MAX / RR_STEP)) + 1
-    rvals = collect(LinRange(0f0, 1f0, ncols))  # r lépcsők 0..1 között, egyenletes rács (N = parts+1)
-    hs    = Float32.(0:30:330)               # 12 közép-hue (fok): 0°,30°,…,330°
-    atlas = Matrix{RGBAf}(undef, 3, ncols * 12)  # 3B: inline length(hs)
+function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32; s::Float32=1f0, v::Float32=1f0, alphas::Vector{Float32}=Float32[1f0]) 
+    ncols = Int(floor(RR_MAX / RR_STEP)) + 1                       # RR oszlopszám (RR_MAX/RR_STEP + 1)
+    rvals = collect(LinRange(0f0, 1f0, ncols))                     # RR lépcsők 0..1 normálva
+    hs    = Float32.(0:30:330)                                     # 12 közép-hue 0..330 fok
+    alpha_count = length(alphas)                                   # alpha lépések száma
+    atlas = Matrix{RGBAf}(undef, 3, ncols * alpha_count * 12)      # atlasz: 3 sor, 12 blokk, RR×alpha oszlop
 
     @inbounds for (i, hmid) in enumerate(hs)
-        Δ::Float32 = (mod(hmid, 60f0) == 0f0) ? 60f0 : 30f0  # Δ (fok): 60°, ha h_mid % 60 == 0; különben 30°
-        base = (i-1) * ncols  # atlasz-blokk oszlop offsetje az i. közép-hue-hoz (0-indexelt blokkok)
+        Δ::Float32 = (mod(hmid, 60f0) == 0f0) ? 60f0 : 30f0        # Δ: 60°, ha h_mid % 60 == 0, különben 30°
+        base = (i-1) * ncols * alpha_count                         # hue-blokk oszlop offset
         for j in 1:ncols
-            r = rvals[j]  # normált forgási skála: r ∈ [0,1] (0: nincs eltérés, 1: max. Δ)
-            δ = r * Δ  # hue-eltérés (fok) a közép-hue-hoz képest: δ ∈ [0, Δ]
-            hneg = hmid - δ  # kék irány (negatív eltérítés) – 'neg' sáv
-            hpos = hmid + δ  # vörös irány (pozitív eltérítés) – 'pos' sáv
-            col = base + j  # atlasz oszlopindex: adott hue-blokk kezdete + lokális oszlop
-            atlas[1, col] = RGBAf(HSV(mod(hneg, 360f0), s, v))  # sor1: neg (kékelt) – HSV→RGBAf, 360°-ra modolva
-            atlas[2, col] = RGBAf(HSV(hmid, s, v))              # sor2: mid (alapszín) – változatlan hue
-            atlas[3, col] = RGBAf(HSV(mod(hpos, 360f0), s, v))  # sor3: pos (vöröselt) – HSV→RGBAf, 360°-ra modolva
+            r = rvals[j]                                           # normált forgási skála r ∈ [0,1]
+            δ = r * Δ                                              # hue-eltérés a közép-hue-hoz képest
+            hneg = hmid - δ                                        # negatív eltérítés hue
+            hpos = hmid + δ                                        # pozitív eltérítés hue
+            for k in 1:alpha_count
+                col = base + (j-1) * alpha_count + k               # oszlopindex hue/RR/alpha szerint
+                atlas[1, col] = RGBAf(HSV(mod(hneg, 360f0), s, v), alphas[k])  # neg sáv
+                atlas[2, col] = RGBAf(HSV(hmid, s, v), alphas[k])              # mid sáv
+                atlas[3, col] = RGBAf(HSV(mod(hpos, 360f0), s, v), alphas[k])  # pos sáv
+            end
         end
     end
-    return atlas, ncols, ncols * 12  # pl. parts=20 → 3 × ((20+1)*12) = 3 × 252
+    return atlas, ncols * alpha_count, ncols * alpha_count * 12   # RR×alpha oszlop, hue blokk *12
 end

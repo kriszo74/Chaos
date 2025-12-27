@@ -28,7 +28,7 @@ function add_source!(world, gctx, spec; abscol::Int)
         [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
         Observable(Float64[]),                  # sugarak puffer (observable)
         gctx.atlas,                             # textúra atlasz
-        0.2,                                    # alap áttetszőség
+        spec.alpha,                             # alap áttetszőség
         nothing)                                # plot handle kezdetben üres
     
     if spec.ref !== nothing
@@ -50,7 +50,6 @@ function add_source!(world, gctx, spec; abscol::Int)
         uv_transform = compute_source_uv(abscol, gctx), # UV‑atlasz oszlop kiválasztása 
         rotation     = Vec3f(0.0, pi/4, 0.0),   # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
         transparency = true,                    # átlátszóság engedélyezve
-        alpha        = src.alpha,               # átlátszóság mértéke
         interpolate  = true,                    # textúrainterpoláció bekapcsolva
         shading      = true)                    # fény-árnyék aktív
     push!(world.sources, src)

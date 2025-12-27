@@ -48,9 +48,11 @@ end
 # Hue kiosztás configból: címkék és index lookup
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
+const ALPHA_STRIDE = length(CFG["gui"]["ALPHA_VALUES"])
 
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
+      alpha      = Float32(e["alpha"]), # átlátszóság
       RV         = e["RV"],             # sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irány.
       RR         = e["RR"],             # rotation rate (saját időtengely körüli szögsebesség) – skalár.
       ref        = e["ref"] == CFG["gui"]["REF_NONE"] ? nothing : e["ref"],  # hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
@@ -73,21 +75,24 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
     for (i, spec) in enumerate(preset_specs(preset))
         cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
-        src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+        cur_alpha_ix = Ref(findfirst(==(spec.alpha), Float32.(CFG["gui"]["ALPHA_VALUES"]))) 
+        src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[])
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[], src, gctx)
+                        apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[], src, gctx)
                     end)
 
         # alpha row (ALWAYS)
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "alpha $(i)", 0.05:0.05:1.0;
-                   startvalue = src.alpha,
-                   onchange = v -> (src.alpha = v),
-                   target = src.plot, attr = :alpha)
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "alpha $(i)", Float32.(CFG["gui"]["ALPHA_VALUES"]);
+                   startvalue = spec.alpha,
+                   onchange = v -> begin
+                       cur_alpha_ix[] = findfirst(==(v), Float32.(CFG["gui"]["ALPHA_VALUES"]))
+                       apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[], src, gctx)
+                   end)
 
         # RV (skálár) – LIVE recompute
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
@@ -99,7 +104,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                     startvalue = spec.RR,
                     onchange = v -> begin
                         cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
-                        apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + cur_rr_offset[])
+                        apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * RR_ALPHA_STRIDE + cur_alpha_ix[])
                     end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
@@ -158,7 +163,7 @@ end
 
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
 function setup_gui!(fig, scene, world::World, rt::Runtime)
-    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
+    gctx = GuiCtx(fig, scene, GridLayout(), GridLayout(), rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]); alphas=Float32.(CFG["gui"]["ALPHA_VALUES"]))..., create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0))
     fig[1, 1] = gctx.gl = GridLayout() # Setting panel
     gctx.gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(CFG["gui"]["GUI_COL_W"]))  # keskeny GUI-oszlop
