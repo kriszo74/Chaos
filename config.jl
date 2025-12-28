@@ -4,9 +4,19 @@
 
 using TOML
 
-load_config(path::AbstractString = "config.toml") = TOML.parsefile(path)
+function load_config!(path::AbstractString = "config.toml")
+    cfg = TOML.parsefile(path)
+    alpha_values = Float32.(cfg["gui"]["ALPHA_VALUES"])
+    for tbl in cfg["presets"]["table"]
+        for e in tbl["entries"]
+            alpha = Float32(e["alpha"])
+            @dbg_assert any(==(alpha), alpha_values) "Ismeretlen alpha a presets.table.entries-ben"
+        end
+    end
+    return cfg
+end
 
-const CFG = load_config()
+const CFG = load_config!()
 
 function find_entries_by_name(tables, name::AbstractString; key::AbstractString = "name")
     idx = findfirst(t -> t[key] == name, tables)

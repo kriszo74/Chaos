@@ -48,7 +48,6 @@ end
 # Hue kiosztás configból: címkék és index lookup
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
-const ALPHA_STRIDE = length(CFG["gui"]["ALPHA_VALUES"])
 
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
@@ -76,14 +75,15 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
         cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
         cur_alpha_ix = Ref(findfirst(==(spec.alpha), Float32.(CFG["gui"]["ALPHA_VALUES"]))) 
-        src = add_source!(world, gctx, spec; abscol=(cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[])
+        abscol() = (cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * length(CFG["gui"]["ALPHA_VALUES"]) + cur_alpha_ix[]
+        src = add_source!(world, gctx, spec; abscol=abscol())
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(gctx.fig, gctx.sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[], src, gctx)
+                        apply_source_uv!(abscol(), src, gctx)
                     end)
 
         # alpha row (ALWAYS)
@@ -91,7 +91,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    startvalue = spec.alpha,
                    onchange = v -> begin
                        cur_alpha_ix[] = findfirst(==(v), Float32.(CFG["gui"]["ALPHA_VALUES"]))
-                       apply_source_uv!((cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * ALPHA_STRIDE + cur_alpha_ix[], src, gctx)
+                       apply_source_uv!(abscol(), src, gctx)
                    end)
 
         # RV (skálár) – LIVE recompute
@@ -104,7 +104,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                     startvalue = spec.RR,
                     onchange = v -> begin
                         cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
-                        apply_source_RR!(v, src, gctx, (cur_h_ix[] - 1) * gctx.ncols + (cur_rr_offset[] - 1) * RR_ALPHA_STRIDE + cur_alpha_ix[])
+                        apply_source_RR!(v, src, gctx, abscol())
                     end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel

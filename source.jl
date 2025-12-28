@@ -12,8 +12,6 @@ mutable struct Source
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
     radii::Observable{Vector{Float64}}  # sugarak puffer
-    color::Matrix{RGBAf}         # textúra MxN színmátrix (pl. 3x1 RGBAf)
-    alpha::Float64               # áttetszőség
     plot::Any                    # plot handle
 end
 
@@ -27,8 +25,6 @@ function add_source!(world, gctx, spec; abscol::Int)
         0.0,                                    # indulási idő
         [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
         Observable(Float64[]),                  # sugarak puffer (observable)
-        gctx.atlas,                             # textúra atlasz
-        spec.alpha,                             # alap áttetszőség
         nothing)                                # plot handle kezdetben üres
     
     if spec.ref !== nothing
@@ -46,7 +42,7 @@ function add_source!(world, gctx, spec; abscol::Int)
         src.positions;                          # forrás pályapontjai
         marker       = gctx.marker,             # UV-s gömb marker
         markersize   = src.radii,               # példányonkénti sugárvektor
-        color        = src.color,               # textúra (Matrix{RGBAf})
+        color        = gctx.atlas,              # textúra (Matrix{RGBAf})
         uv_transform = compute_source_uv(abscol, gctx), # UV‑atlasz oszlop kiválasztása 
         rotation     = Vec3f(0.0, pi/4, 0.0),   # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
         transparency = true,                    # átlátszóság engedélyezve
