@@ -4,7 +4,7 @@
 
 using TOML
 
-function load_config!(path::AbstractString = "config.toml")
+function load_config!(path::AbstractString = joinpath(@__DIR__, "..", "config.toml"))
     cfg = TOML.parsefile(path)
     alpha_values = Float32.(cfg["gui"]["ALPHA_VALUES"])
     for tbl in cfg["presets"]["table"]

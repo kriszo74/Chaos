@@ -55,3 +55,12 @@ G) GRD - Felesleges guardok kerülése: ha az értéktartományt a flow garantá
 
 H) LAN - Láncolt értékadás: használd rövid, mellékhatás‑mentes inicializálásoknál; pl. fig[1,1] = gl = GridLayout(). A kifejezés jobbra asszociatív, ezért ekvivalens a gl = GridLayout(); fig[1,1] = gl formával. Mellékhatásos vagy több lépcsős hívások láncolását kerüld, mert nehezíti a debuggolást.
 
+3 RELEASE SZABÁLYOK
+
+- Verzioszabaly: kezdes 0.1.0-alpha.1, majd 0.1.0-alpha.2, stabilnal 0.1.0
+- Tag formatum: vX.Y.Z elotag, pl. v0.1.0-alpha.1
+- Release tipus: alpha eseten Pre-release jeloles
+- Minimum release note: 3 rovid blokk: "Uj", "Valtozas", "Ismert hibak"
+- Assetek: csak futtathato/zip, forras automatikus GitHub-on
+- Minimal ellenorzes: futtathato elindul-e + alap UI megnyithato
+
