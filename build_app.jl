@@ -9,5 +9,6 @@ create_app(
     script = "main.jl",
     force = true,
     incremental = true,
+    include_transitive_dependencies = false,
     sysimage_build_args = `--strip-metadata`,
 )
