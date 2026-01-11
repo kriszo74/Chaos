@@ -104,7 +104,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                     startvalue = spec.RR,
                     onchange = v -> begin
                         cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
-                        apply_source_RR!(v, src, gctx, abscol())
+                        apply_source_RR!(v, src, world, gctx, abscol())
                     end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
@@ -187,7 +187,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                                current_preset[] = sel
                                rebuild_sources_panel!(gctx, world, rt, sel)
                                # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
-                               apply_world_time!(world)
+                               seek_world_time!(world)
                            end)
 
     rebuild_sources_panel!(gctx, world, rt, first(presets)) # Dinamikus Sources panel
@@ -198,7 +198,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                           onchange = v -> begin
                               world.density = v
                               rebuild_sources_panel!(gctx, world, rt, current_preset[])
-                              apply_world_time!(world)
+                              seek_world_time!(world)
                           end)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
@@ -209,7 +209,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                         disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
                         rt.paused[] = true
                         world.t[] = v
-                        apply_world_time!(world)
+                        seek_world_time!(world)
                     end)
     
     on(world.t) do tv
@@ -228,12 +228,13 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                            # Frissítsük a t csúszka tartományát és clampeljük az értékét
                            sT.range[] = 0.0:0.01:world.max_t
                            world.t[] = clamp(world.t[], 0.0, world.max_t)
-                           apply_world_time!(world)
+                           seek_world_time!(world)
                        end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gctx.gl, 5, "▶"; onclick = btn -> begin
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
+            seek_world_time!(world, 0.0)
             rt.sim_task[] = start_sim!(fig, scene, world, rt)
             rt.paused[] = false
         else

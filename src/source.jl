@@ -8,6 +8,7 @@ mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
     act_k::Int                   # aktuális index
     RV::SVector{3, Float64}      # sebesség vektor TODO: RV-t külön tároljuk egységvektorként, amelyből származtatjuk a tényleges vektort.
+    base_RV::SVector{3, Float64} # alap RV vektor (seek resethez)
     RR::Float64                  # saját tengely körüli szögszerű paraméter (skalár, fénysebességhez viszonyítható)
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
@@ -21,6 +22,7 @@ function add_source!(world, gctx, spec; abscol::Int)
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
         SVector(spec.RV, 0.0, 0.0),             # kezdő RV vektor
+        SVector(spec.RV, 0.0, 0.0),             # alap RV vektor
         spec.RR,                                # saját tengely körüli RR
         0.0,                                    # indulási idő
         [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
@@ -54,7 +56,7 @@ end
 
 # Sugarak frissítése a world.t alapján
 # TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
-function apply_world_time!(world; step = world.E / 60)
+function step_world!(world; step = world.E / 60)
     update_radii!(world)  # sugárpuffer frissítése
     apply_wave_hit!(world)
     for src in world.sources
@@ -68,7 +70,7 @@ end
 
 # Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
 function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    ref_RV = ref_src.RV                        # referencia RV vektora
+    ref_RV = ref_src.base_RV                   # referencia RV vektora
     u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
     refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)    # stabil referencia vektorok
     refv = abs(sum(refz .* u)) > 0.97 ? refy : refz                 # fallback, ha közel párhuzamos
@@ -186,9 +188,10 @@ end
 
 # RV irány beállítása; pozíció nem változik
 function update_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
-    rv_mag = sqrt(sum(abs2, src.RV))                # RV nagyságának megtartása
+    rv_mag = sqrt(sum(abs2, src.base_RV))           # RV nagyságának megtartása
     dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # új irány számítása yaw/pitch alapján
-    src.RV = rv_mag * dir                           # irány frissítése; horgony változatlan
+    src.base_RV = rv_mag * dir                      # irány frissítése; horgony változatlan
+    src.RV = src.base_RV
 end
 
 # Pozíció alkalmazása: pálya és plot frissítése
@@ -197,21 +200,46 @@ function apply_pose!(src::Source, world)
     src.plot[:positions][] = src.positions                                # plot frissítése
 end
 
+# Forras alapallapot visszaallitasa seek elott
+function reset_source!(src::Source, world)
+    src.RV = src.base_RV
+    src.act_p = SVector(src.positions[1]...)
+    src.act_k = 0
+    src.radii[] = fill(0.0, length(src.radii[]))
+    apply_pose!(src, world)
+end
+
+# t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
+function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
+    t_target = target_t
+    for src in world.sources
+        reset_source!(src, world)
+    end
+    world.t[] = 0.0
+    while world.t[] < t_target
+        world.t[] += step
+        world.t[] > t_target && (world.t[] = t_target)
+        step_world!(world; step)
+    end
+    world.t[] = t_target
+end
+
 # RV skálázása; irány megtartása
 function apply_RV_rescale!(RV::Float64, src::Source, world)
-    u = src.RV / sqrt(sum(abs2, src.RV))    # irány megtartása: normalizálás és skálázás
-    src.RV = u * RV                         # skálázott RV beállítása
-    apply_pose!(src, world)                 # pálya újragenerálása és plot frissítése
+    u = src.base_RV / sqrt(sum(abs2, src.base_RV))    # irány megtartása: normalizálás és skálázás
+    src.base_RV = u * RV                              # skálázott RV beállítása
+    src.RV = src.base_RV
+    seek_world_time!(world)
 end
 
 function apply_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
     update_RV_direction!(yaw_deg, pitch_deg, src, world, ref_src)
-    apply_pose!(src, world)
+    seek_world_time!(world)
 end
 
 function apply_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
     update_spherical_position!(distance, src, world, ref_src, yaw_deg, pitch_deg)
-    apply_pose!(src, world)
+    seek_world_time!(world)
 end
 
 # UV‑transzform frissítése a forráson
@@ -220,8 +248,9 @@ function apply_source_uv!(abscol::Int, src::Source, gctx)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
-function apply_source_RR!(new_RR::Float64, src::Source, gctx, abscol::Int)
+function apply_source_RR!(new_RR::Float64, src::Source, world, gctx, abscol::Int)
     src.RR = new_RR                         # RR skálár frissítése
     apply_source_uv!(abscol, src, gctx)     # textúra oszlop frissítése
+    seek_world_time!(world)
     return src
 end
