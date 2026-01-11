@@ -39,22 +39,21 @@ module Chaos
     include("gui.jl")
 
     # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
-    function start_sim!(fig, scene, world::World, rt::Runtime)
-        rt.sim_task[] = @async begin #TODO: megoldani, hogy debug alatt ne async fusson, különben nem működik az @infiltrete.
-            dt = target = 1/60
-            while isopen(fig.scene)
-                while rt.paused[]; wait(rt.pause_ev); end
-                tprev = time_ns()/1e9
-                world.t[] += step = world.E * dt
-                world.t[] > world.max_t && break
-                step_world!(world; step)
-                frame_used = (time_ns()/1e9) - tprev
-                rem = target - frame_used
-                rem > 0 ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
-                @static if !DEBUG_MODE; dt = max(target, frame_used); end
-            end
-            rt.paused[] = true
+    function start_sim!(fig, scene, world::World, rt::Runtime; target_t = world.max_t, realtime = true)
+        dt = target = 1/60
+        while isopen(fig.scene)
+            while rt.paused[] && realtime; wait(rt.pause_ev); end
+            tprev = time_ns()/1e9
+            world.t[] += step = world.E * dt
+            world.t[] > target_t && break
+            step_world!(world; step)
+            frame_used = (time_ns()/1e9) - tprev
+            rem = target - frame_used
+            rem > 0 && realtime ? sleep(rem) : @info "LAG!" #TODO: VSync, G‑Sync/Freesync -et alkalmazni, hogy látszólag se legyen LAG.
+            @static if !DEBUG_MODE; dt = max(target, frame_used); end
         end
+        rt.paused[] = true
+        world.t[] = t_target
     end
 
     function julia_main()::Cint

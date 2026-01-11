@@ -201,20 +201,20 @@ function apply_pose!(src::Source, world)
 end
 
 # Forras alapallapot visszaallitasa seek elott
-function reset_source!(src::Source, world)
-    src.RV = src.base_RV
-    src.act_p = SVector(src.positions[1]...)
-    src.act_k = 0
-    src.radii[] = fill(0.0, length(src.radii[]))
-    apply_pose!(src, world)
+function reset_sources!(world)
+    for src in world.sources
+        src.RV = src.base_RV
+        src.act_p = SVector(src.positions[1]...)
+        src.act_k = 0
+        src.radii[] = fill(0.0, length(src.radii[]))
+        apply_pose!(src, world)
+    end
 end
 
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
 function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
     t_target = target_t
-    for src in world.sources
-        reset_source!(src, world)
-    end
+    reset_sources!(world)
     world.t[] = 0.0
     while world.t[] < t_target
         world.t[] += step
