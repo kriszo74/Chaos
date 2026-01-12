@@ -117,7 +117,6 @@ function update_radii!(world)
 end
 
 # Hullámtéri találat: kifelé igazítja a cél RV-jét
-const eps_tol = 1e-9
 function apply_wave_hit!(world)
     for emt in world.sources
         emt_radii = emt.radii[]                 # emmiter (emt) sugárpuffer pillanatképe
@@ -200,8 +199,8 @@ function apply_pose!(src::Source, world)
     src.plot[:positions][] = src.positions                                # plot frissítése
 end
 
-# Forras alapallapot visszaallitasa seek elott
-function reset_sources!(world)
+# t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
+function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
     for src in world.sources
         src.RV = src.base_RV
         src.act_p = SVector(src.positions[1]...)
@@ -209,19 +208,14 @@ function reset_sources!(world)
         src.radii[] = fill(0.0, length(src.radii[]))
         apply_pose!(src, world)
     end
-end
 
-# t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
-function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
-    t_target = target_t
-    reset_sources!(world)
     world.t[] = 0.0
-    while world.t[] < t_target
+    t_limit = target_t - step + eps_tol
+    while world.t[] < t_limit
         world.t[] += step
-        world.t[] > t_target && (world.t[] = t_target)
         step_world!(world; step)
     end
-    world.t[] = t_target
+    world.t[] = target_t
 end
 
 # RV skálázása; irány megtartása

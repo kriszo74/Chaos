@@ -235,7 +235,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     btnPlay = mk_button!(fig, gctx.gl, 5, "▶"; onclick = btn -> begin
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
             seek_world_time!(world, 0.0)
-            rt.sim_task[] = @async start_sim!(fig, scene, world, rt)
+            rt.sim_task[] = @async start_sim!(fig, world, rt)
             rt.paused[] = false
         else
             rt.paused[] = !rt.paused[]

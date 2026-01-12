@@ -17,6 +17,7 @@ function load_config!(path::AbstractString = joinpath(@__DIR__, "..", "config.to
 end
 
 const CFG = load_config!()
+const eps_tol = CFG["world"]["eps_tol"]
 
 function find_entries_by_name(tables, name::AbstractString; key::AbstractString = "name")
     idx = findfirst(t -> t[key] == name, tables)

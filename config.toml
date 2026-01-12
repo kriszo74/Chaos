@@ -26,6 +26,7 @@ deeppink = 330
 E = 3.0
 density = 1.0
 max_t = 10.0
+eps_tol = 1e-9
 
 [presets]
 order = ["Téridő kísérletek...", "Tachion AV = 3.16"]
