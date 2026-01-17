@@ -13,7 +13,7 @@ C) Műveleti jelzők:
 - NOP = nincs módosítás, csak egyeztetés.
 
 D) Parancsprotokoll (ACK/NOP + célzás):
-- `ACK:PAR` = hajtsd végre a parancsot kérdés nélkül az irányelvek szerint, viszont csak külön kérésre kommitolj.
+- `ACK` = hajtsd végre a parancsot kérdés nélkül az irányelvek szerint, viszont csak külön kérésre kommitolj.
 - `ACK:KOM` = alkalmazd a kommentelési szabályokat; fésüld át és írd át.
 - `ACK:KOM:COL` = alparancs, pl. kommentek oszlopba rendezése blokkon belül (azonos oszlopra igazítva).
 - Opcionális szűkítés: `ACK:KOM source.jl` csak a megadott fájlra.
@@ -21,9 +21,11 @@ D) Parancsprotokoll (ACK/NOP + célzás):
 - Tartomány: `ACK:KOM source.jl 31:41` csak a megadott sorokra.
 - `NOP:...` = csak javasolj, ne módosíts.
 
-E) Elméleti javaslat: 
-- theory.md hivatkozásával tehetsz elméleti javaslatot, visszakérdezhetsz;
-- szabad kezet kapsz, theory.md-t NOP mellett is módosíthatod.
+E) Kommitolási szabályok:
+- Csak külön kérésre kommitolj.
+- Csak a kért fájlokat stage-eld.
+- Egy változás = egy kommit, ha logikailag független.
+- Kommit üzenet egyeztetése kötelező.
 
 2 KÓDOLÁSI SZABÁLYOK, PARANCSOK
 
