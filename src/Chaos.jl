@@ -6,6 +6,7 @@ module Chaos
     using GeometryBasics
     using Colors
     using Observables  # Observable támogatás
+    #using Infiltrator
     
     # rendszer-paraméterek
     const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
@@ -40,12 +41,11 @@ module Chaos
     # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
     function start_sim!(fig, world::World, rt::Runtime)
         dt = target = 1/60
-        t_limit = world.max_t + eps_tol
         while isopen(fig.scene)
             while rt.paused[]; wait(rt.pause_ev); end
             tprev = time_ns()/1e9
             world.t[] += step = world.E * dt
-            world.t[] > t_limit && break
+            world.t[] > world.max_t + eps_tol && break #TODO: t_limit = world.max_t + eps_tol -t betenni max_t állításhoz (word-be vagy rt-be), hogy ne kelljen újra és újra számolni itt.
             step_world!(world; step)
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
