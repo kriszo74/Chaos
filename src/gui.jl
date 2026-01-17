@@ -224,10 +224,9 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
-                            rebuild_sources_panel!(gctx, world, rt, current_preset[])
-                           # Frissítsük a t csúszka tartományát és clampeljük az értékét
-                           sT.range[] = 0.0:0.01:world.max_t
-                           world.t[] = clamp(world.t[], 0.0, world.max_t)
+                           rebuild_sources_panel!(gctx, world, rt, current_preset[])
+                           
+                           sT.range[] = 0.0:0.01:world.max_t # Frissítsük a t csúszka tartományát
                            seek_world_time!(world)
                        end)
 
