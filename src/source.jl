@@ -103,7 +103,7 @@ function update_radii!(world)
     @inbounds for src in world.sources # források bejárása
         radii = src.radii[]                         # sugárpuffer
         dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
-        K = ceil(Int, dt_rel * world.density)       # aktív sugarak száma
+        K = ceil(Int, round(dt_rel * world.density, digits = 12)) # aktív sugarak száma TODO: mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
         src.act_k = K                               # aktuális index
         @inbounds begin
             for i in 1:K                            # aktív szegmensek frissítése
