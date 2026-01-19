@@ -220,7 +220,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 
-    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 1.0:0.5:600.0;
+    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 10.0:10.0:600.0;
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
