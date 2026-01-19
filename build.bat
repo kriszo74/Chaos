@@ -23,5 +23,7 @@ set "version=!version:"=!"
 set "version=!version: =!"
 set "zip_name=Chaos-windows-x64-v!version!.zip"
 
-7z a -tzip -mx=9 -mmt=on "build\!zip_name!" build\Chaos
+pushd build
+7z a -tzip -mx=9 -mmt=on "!zip_name!" Chaos
+popd
 if errorlevel 1 exit /b 1
