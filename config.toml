@@ -6,6 +6,7 @@ GUI_COL_W = 240
 RR_MAX = 2.0
 RR_STEP = 0.1
 ALPHA_VALUES = [0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+DENSITY_VALUES = [1.0, 2.0, 5.0]
 REF_NONE = 0
 
 [gui.hue]

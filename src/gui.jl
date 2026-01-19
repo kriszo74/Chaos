@@ -193,7 +193,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     rebuild_sources_panel!(gctx, world, rt, first(presets)) # Dinamikus Sources panel
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
-    sDensity = mk_slider!(fig, gctx.gl, 6, "density", 0.5:0.5:20.0;
+    sDensity = mk_slider!(fig, gctx.gl, 6, "density", CFG["gui"]["DENSITY_VALUES"];
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
