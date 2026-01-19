@@ -90,6 +90,16 @@ function compute_positions(N::Int, src::Source, world)
     return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
 end
 
+# Pufferhosszak frissítése density/max_t változásnál
+function update_sampling!(world)
+    for src in world.sources
+        N = Int(ceil((world.max_t - src.bas_t) * world.density))
+        src.radii[] = fill(0.0, N)
+        src.positions = compute_positions(N, src, world)
+        src.plot[:positions][] = src.positions
+    end
+end
+
 # UV oszlop indexből uv_transform kiszámítása
 function compute_source_uv(abscol::Int, gctx)
     u0 = Float32((abscol - 1) / gctx.cols)                          # oszlop kezdő U koordináta

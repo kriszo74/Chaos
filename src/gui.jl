@@ -197,7 +197,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                           startvalue = world.density,
                           onchange = v -> begin
                               world.density = v
-                              rebuild_sources_panel!(gctx, world, rt, current_preset[])
+                              update_sampling!(world)
                               seek_world_time!(world)
                           end)
 
@@ -220,11 +220,11 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 
-    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 1.0:0.5:60.0;
+    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 1.0:0.5:600.0;
                        startvalue = world.max_t,
                        onchange = v -> begin
                            world.max_t = v
-                           rebuild_sources_panel!(gctx, world, rt, current_preset[])
+                           update_sampling!(world)
                            
                            sT.range[] = 0.0:0.01:world.max_t # Frissítsük a t csúszka tartományát
                            seek_world_time!(world)
