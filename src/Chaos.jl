@@ -9,8 +9,7 @@ module Chaos
     #using Infiltrator
     
     # rendszer-paraméterek
-    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
-    @info "DEBUG_MODE" DEBUG_MODE
+    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "0") == "1" # set APP_DEBUG=1 -> debug
 
     # Debug-only assert macro (0 overhead in release)
     macro dbg_assert(cond, msg="")
@@ -60,6 +59,7 @@ module Chaos
         #TODO: nyomozni:  build kozben lefut a GUI, es a Makie font‑ot probal betolteni. A font fajl nem talalhato, ezert a build elhasal.
         ccall(:jl_generating_output, Cint, ()) != 0 && return 0
         
+        @info "DEBUG_MODE = $DEBUG_MODE"
         rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
         world = World(3.0, 1.0, 10.0, Observable(0.0), Source[])
         fig, scene = setup_scene()  # jelenet beállítása
