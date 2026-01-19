@@ -61,7 +61,7 @@ module Chaos
         
         @info "DEBUG_MODE = $DEBUG_MODE"
         rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
-        world = World(3.0, 1.0, 10.0, Observable(0.0), Source[])
+        world = World(Float64(CFG["world"]["E"]), Float64(CFG["world"]["density"]), Float64(CFG["world"]["max_t"]), Observable(0.0), Source[])
         fig, scene = setup_scene()  # jelenet beállítása
         setup_gui!(fig, scene, world, rt)
         screen = display(fig)  # ablak megjelenítése (screen visszaadva)
