@@ -26,4 +26,4 @@ julia build_app.jl
 strip build/Chaos/bin/Chaos
 version=$(awk -F\" '/^version =/ {print $2}' Project.toml)
 zip_name="Chaos-linux-x64-v${version}.zip"
-7z a -tzip -mx=9 -mmt=on "build/${zip_name}" build/Chaos
+(cd build && 7z a -tzip -mx=9 -mmt=on "${zip_name}" Chaos)
