@@ -14,6 +14,9 @@ mutable struct Source
     positions::Vector{Point3d}   # pozíciók (Point3d)
     radii::Observable{Vector{Float64}}  # sugarak puffer
     plot::Any                    # plot handle
+    
+    # futás-optimalizációs változók:
+    radii_clear_needed::Bool     # radii nullázás jelző
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
@@ -27,7 +30,8 @@ function add_source!(world, gctx, spec; abscol::Int)
         0.0,                                    # indulási idő
         [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
         Observable(Float64[]),                  # sugarak puffer (observable)
-        nothing)                                # plot handle kezdetben üres
+        nothing,                                # plot handle kezdetben üres
+        true)                                   # radii nullázás jelző
     
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
@@ -97,6 +101,7 @@ function update_sampling!(world)
         src.radii[] = fill(0.0, N)
         src.positions = compute_positions(N, src, world)
         src.plot[:positions][] = src.positions
+        src.radii_clear_needed = true
     end
 end
 
@@ -107,7 +112,7 @@ function compute_source_uv(abscol::Int, gctx)
     return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
 end
 
-# Sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
+# Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
     @inbounds for src in world.sources # források bejárása
@@ -119,8 +124,11 @@ function update_radii!(world)
             for i in 1:K                            # aktív szegmensek frissítése
                 radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
             end
-            N = length(radii)                       # pufferhossz
-            K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása # TODO: csak első futásnál és visszatekerésnél szükséges. Amúgy érdemes átlépni.
+            if src.radii_clear_needed
+                N = length(radii)                       # pufferhossz
+                K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása: csak első futásnál és visszatekerésnél szükséges.
+                src.radii_clear_needed = false
+            end
         end
         src.radii[] = radii             # sugárpuffer frissítése
     end
@@ -217,6 +225,7 @@ function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E /
         src.act_k = 0
         src.radii[] = fill(0.0, length(src.radii[]))
         apply_pose!(src, world)
+        src.radii_clear_needed = true
     end
 
     world.t[] = 0.0
