@@ -35,8 +35,8 @@ function add_source!(world, gctx, spec; abscol::Int)
     
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
-        update_spherical_position!(spec.distance, src, world, ref_src, spec.yaw_deg, spec.pitch_deg) #TODO: spec-et átadni egészben.
-        update_RV_direction!(spec.rv_yaw_deg, spec.rv_pitch_deg, src, world, ref_src) #TODO: spec-et átadni egészben.
+        update_spherical_position!(spec.distance, src, world, ref_src, spec.yaw, spec.pitch) #TODO: spec-et átadni egészben.
+        update_RV_direction!(spec.rv_yaw, spec.rv_pitch, src, world, ref_src) #TODO: spec-et átadni egészben.
     end
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
@@ -73,17 +73,18 @@ function step_world!(world; step = world.E / 60)
 end
 
 # Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
-function compute_dir(ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
+const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
+function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
     ref_RV = ref_src.base_RV                   # referencia RV vektora
     u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
-    refz = SVector(0.0, 0.0, 1.0); refy = SVector(0.0, 1.0, 0.0)    # stabil referencia vektorok
-    refv = abs(sum(refz .* u)) > 0.97 ? refy : refz                 # fallback, ha közel párhuzamos
+    refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ                # fallback, ha közel párhuzamos
     e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
     e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
     e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])  # e3 = u × e2
-    yaw   = yaw_deg   * (pi/180)               # fok → radián TODO: fok radián konverzió megszüntetése
-    pitch = pitch_deg * (pi/180)               # fok → radián TODO: fok radián konverzió megszüntetése
-    dir = cos(pitch)*cos(yaw)*e2 + cos(pitch)*sin(yaw)*e3 + sin(pitch)*u  # irány komponensek TODO: sincos
+    sy, cy = sincos(yaw)                       # yaw szinusz és koszinusz
+    sp, cp = sincos(pitch)                     # pitch szinusz és koszinusz
+    dir = cp*cy*e2 + cp*sy*e3 + sp*u           # irány komponensek
     return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
 end
 
@@ -195,18 +196,18 @@ function apply_wave_hit!(world)
 end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
-function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
+function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw::Float64, pitch::Float64)
     ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
-    dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # ref RV-hez mért irány (yaw/pitch)
+    dir = compute_dir(ref_src, yaw, pitch)          # ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + distance * dir            # új horgony pozíció távolság és irány szerint
     src.act_k = 0                                   # aktuális index reset
     src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
 end
 
 # RV irány beállítása; pozíció nem változik
-function update_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
+function update_RV_direction!(yaw::Float64, pitch::Float64, src::Source, world, ref_src::Source)
     rv_mag = sqrt(sum(abs2, src.base_RV))           # RV nagyságának megtartása
-    dir = compute_dir(ref_src, yaw_deg, pitch_deg)  # új irány számítása yaw/pitch alapján
+    dir = compute_dir(ref_src, yaw, pitch)          # új irány számítása yaw/pitch alapján
     src.base_RV = rv_mag * dir                      # irány frissítése; horgony változatlan
     src.RV = src.base_RV
 end
@@ -245,13 +246,13 @@ function apply_RV_rescale!(RV::Float64, src::Source, world)
     seek_world_time!(world)
 end
 
-function apply_RV_direction!(yaw_deg::Float64, pitch_deg::Float64, src::Source, world, ref_src::Source)
-    update_RV_direction!(yaw_deg, pitch_deg, src, world, ref_src)
+function apply_RV_direction!(yaw::Float64, pitch::Float64, src::Source, world, ref_src::Source)
+    update_RV_direction!(yaw, pitch, src, world, ref_src)
     seek_world_time!(world)
 end
 
-function apply_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw_deg::Float64, pitch_deg::Float64)
-    update_spherical_position!(distance, src, world, ref_src, yaw_deg, pitch_deg)
+function apply_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw::Float64, pitch::Float64)
+    update_spherical_position!(distance, src, world, ref_src, yaw, pitch)
     seek_world_time!(world)
 end
 
