@@ -52,7 +52,7 @@ const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerat
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
       alpha      = Float32(e["alpha"]), # átlátszóság
-      RV         = e["RV"],             # sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irány.
+      RV         = abs(e["RV"]) < eps(Float64) ? eps(Float64) : e["RV"],     # sebesség nagysága (skalár). Az 1. forrás vektora (RV,0,0), a többinél számolt irányt.
       RR         = e["RR"],             # rotation rate (saját időtengely körüli szögsebesség) – skalár.
       ref        = e["ref"] == CFG["gui"]["REF_NONE"] ? nothing : e["ref"],  # hivatkozott forrás indexe (1‑alapú). Az első forrásnál: ref = nothing.
       distance   = e["distance"],       # távolság a ref forráshoz
@@ -95,9 +95,9 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset:
                    end)
 
         # RV (skálár) – LIVE recompute
-        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.1:0.1:10.0;
+        mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.0:0.1:10.0;
                    startvalue = sqrt(sum(abs2, src.RV)),
-                   onchange = v -> apply_RV_rescale!(v, world.sources[i], world))
+                   onchange = v -> apply_RV_rescale!(v < eps(Float64) ? eps(Float64) : v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RR $(i)", 0.0:CFG["gui"]["RR_STEP"]:CFG["gui"]["RR_MAX"]; 

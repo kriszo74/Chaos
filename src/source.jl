@@ -135,7 +135,7 @@ function update_radii!(world)
     end
 end
 
-# Hullámtéri találat: kifelé igazítja a cél RV-jét
+# Realizáció vizsgálat: kifelé igazítja rcv (receiver, azaz realizáló forrás) RV-jét.
 function apply_wave_hit!(world)
     for emt in world.sources
         emt_radii = emt.radii[]                 # emmiter (emt) sugárpuffer pillanatképe
@@ -169,7 +169,7 @@ function apply_wave_hit!(world)
 
             # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
             emt_rv_dir = emt_k < length(emt.positions) ? SVector(emt.positions[emt_k+1]...) - emt_p : emt.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
-            emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir); isnothing(emt_rv_u) && continue # src.RV egységvektora és hossza TODO: RV = 0-t tiltani, helyette RV = 0.0000001 (vagy még kisebb), ami az ábrázoláson nem látszik.
+            emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir) # src.RV egységvektora és hossza
 
             # múlttérsűrűség és taszítási vektor számítás
             cosθ = sum(to_rcv_u .* emt_rv_u)           # két egységvektor (to_rcv_u, emt_rv_u) skaláris szorzata = cosθ: vektor elemeit összeszorozzuk és szummázzuk.
@@ -187,9 +187,8 @@ function apply_wave_hit!(world)
             # eredő vektor számítás és tgt.RV irányba állítása
             rcv_step = (rcv.RV + emt_v + emt_rot) / world.density # ez az eredő vektor, ezt kell hozzáadni rcv.positions[k]-hoz
             rcv_rv_mag = sqrt(sum(abs2, rcv.RV))        # aktuális rcv.RV hossza
-            rcv_rv_mag == 0 && continue                 # nulla RV: nincs frissítés
             rcv_step_mag = sqrt(sum(abs2, rcv_step))    # step hossza
-            rcv_step_mag == 0 && continue               # nulla step: nincs irány
+            rcv_step_mag == 0 && continue               # nulla step: nincs irány #TODO: bebizonyítani, hogy ez nem lehetséges és kivenni a guardot!
             rcv.RV = rcv_step / rcv_step_mag * rcv_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
         end
     end
