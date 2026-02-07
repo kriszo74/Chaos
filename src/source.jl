@@ -91,7 +91,7 @@ end
 # Pozíciók újragenerálása adott N alapján
 # TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function compute_positions(N::Int, src::Source, world)
-    dp = src.RV / world.density            # két impulzus közti eltolás TODO: ezt a hányadost RV változásakor kellene számolni!
+    dp = src.RV / world.density                                      # két impulzus közti pozíciólépés
     return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
 end
 

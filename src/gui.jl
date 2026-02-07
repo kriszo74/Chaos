@@ -62,7 +62,7 @@ preset_specs(preset::String) =
       rv_pitch = deg2rad(e["rv_pitch_deg"])) for e in find_entries_by_name(CFG["presets"]["table"], preset)]
 
 # Forráspanelek újraépítése és jelenet megtisztítása
-function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime, preset::String)
+function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset = first(CFG["presets"]["order"]))
     rt.paused[] = true      # rebuild közben álljunk meg
     empty!(gctx.scene)      # teljes újraépítés
     foreach(delete!, contents(gctx.sources_gl))  # forráspanel elemeinek törlése
@@ -173,33 +173,27 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     gctx.sources_gl.alignmode = Outside(0) # külső padding
 
     fig[1:2, 2] = scene  # jelenet: helyezés jobbra, két sor magas
-    
+    rebuild_sources_panel!(gctx, world, rt) # Dinamikus Sources panel
+
     # --- Vezérlők ---
-    sE = mk_slider!(fig, gctx.gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
-                    onchange = v -> (world.E = v))
+    mk_slider!(fig, gctx.gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
+               onchange = v -> (world.E = v))
 
-    # Aktuális preset és t állapot a GUI-ban
-    presets = CFG["presets"]["order"] #TODO: setup_gui! ne kezeljen PRESET-et. rebuild_sources_panel! kezelje, ha null-t kap.
-    current_preset = Ref(first(presets))
-    # Preset választó (fent tartjuk, mint eddig)
-    preset_menu = mk_menu!(fig, gctx.gl, 2, "Preset", presets; selected_index = 1,
-                           onchange = sel -> begin
-                               current_preset[] = sel
-                               rebuild_sources_panel!(gctx, world, rt, sel)
-                               # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
-                               seek_world_time!(world)
-                           end)
-
-    rebuild_sources_panel!(gctx, world, rt, first(presets)) # Dinamikus Sources panel
+    # Preset választó
+    mk_menu!(fig, gctx.gl, 2, "Preset", CFG["presets"]["order"]; selected_index = 1,
+             onchange = sel -> begin
+                 rebuild_sources_panel!(gctx, world, rt; preset = sel)
+                 seek_world_time!(world) # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
+             end)
 
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
-    sDensity = mk_slider!(fig, gctx.gl, 6, "density", CFG["gui"]["DENSITY_VALUES"];
-                          startvalue = world.density,
-                          onchange = v -> begin
-                              world.density = v
-                              update_sampling!(world)
-                              seek_world_time!(world)
-                          end)
+    mk_slider!(fig, gctx.gl, 6, "density", CFG["gui"]["DENSITY_VALUES"];
+               startvalue = world.density,
+               onchange = v -> begin
+                   world.density = v
+                   update_sampling!(world)
+                   seek_world_time!(world)
+               end)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
     disable_sT_onchange = Ref(false) # guard: különbség emberi vs. programozott slider-mozgatás között
@@ -220,15 +214,15 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         end
     end
 
-    sMaxT = mk_slider!(fig, gctx.gl, 7, "max_t", 10.0:10.0:600.0;
-                       startvalue = world.max_t,
-                       onchange = v -> begin
-                           world.max_t = v
-                           update_sampling!(world)
-                           
-                           sT.range[] = 0.0:0.01:world.max_t # Frissítsük a t csúszka tartományát
-                           seek_world_time!(world)
-                       end)
+    mk_slider!(fig, gctx.gl, 7, "max_t", 10.0:10.0:600.0;
+               startvalue = world.max_t,
+               onchange = v -> begin
+                   world.max_t = v
+                   update_sampling!(world)
+                   
+                   sT.range[] = 0.0:0.01:world.max_t # Frissítsük a t csúszka tartományát
+                   seek_world_time!(world)
+               end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gctx.gl, 5, "▶"; onclick = btn -> begin
