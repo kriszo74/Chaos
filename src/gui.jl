@@ -109,50 +109,46 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
         if spec.ref !== nothing
-            dist_ref  = Ref(spec.distance)        # relatív távolság állapota (Ref)
-            yaw_ref   = Ref(spec.yaw)         # relatív azimut [rad] állapota (Ref)
-            pitch_ref = Ref(spec.pitch)       # relatív eleváció [rad] állapota (Ref)
-            rv_yaw_ref   = Ref(spec.rv_yaw)   # RV azimut [rad] (Ref)
-            rv_pitch_ref = Ref(spec.rv_pitch) # RV eleváció [rad] (Ref)            
+            spec_ref = Ref(spec)              # forrás paraméterei (Ref)
 
             # Ref távolság csúszka: sugár frissítése ref forráshoz képest
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "distance $(i)", 0.1:0.1:10.0;
                        startvalue = spec.distance,
                        onchange = v -> begin
-                           dist_ref[] = v
-                           apply_spherical_position!(dist_ref[], world.sources[i], world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           spec_ref[] = (; spec_ref[]..., distance = v)
+                           apply_spherical_position!(spec_ref[], src, world)
                        end)
 
             # Ref azimut csúszka: pálya síkbeli elforgatása ref körül       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = rad2deg(spec.yaw),
                        onchange = v -> begin
-                           yaw_ref[] = deg2rad(v)
-                           apply_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           spec_ref[] = (; spec_ref[]..., yaw = deg2rad(v))
+                           apply_spherical_position!(spec_ref[], src, world)
                        end)
 
             # Ref pitch csúszka: eleváció módosítása refhez képest       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = rad2deg(spec.pitch),
                        onchange = v -> begin
-                           pitch_ref[] = deg2rad(v)
-                           apply_spherical_position!(dist_ref[], src, world, world.sources[spec.ref], yaw_ref[], pitch_ref[])
+                           spec_ref[] = (; spec_ref[]..., pitch = deg2rad(v))
+                           apply_spherical_position!(spec_ref[], src, world)
                        end)
 
             # RV irány – kézi yaw/pitch (pozíció nem változik)
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV yaw $(i) [°]", -180:5:180;
                        startvalue = rad2deg(spec.rv_yaw),
                        onchange = v -> begin
-                           rv_yaw_ref[] = deg2rad(v)
-                           apply_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           spec_ref[] = (; spec_ref[]..., rv_yaw = deg2rad(v))
+                           apply_RV_direction!(spec_ref[], src, world)
                        end)
             
             # Ref RV pitch: irány döntése helyváltoztatás nélkül                       
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = rad2deg(spec.rv_pitch),
                        onchange = v -> begin
-                           rv_pitch_ref[] = deg2rad(v)
-                           apply_RV_direction!(rv_yaw_ref[], rv_pitch_ref[], src, world, world.sources[spec.ref])
+                           spec_ref[] = (; spec_ref[]..., rv_pitch = deg2rad(v))
+                           apply_RV_direction!(spec_ref[], src, world)
                        end)
         end
     end

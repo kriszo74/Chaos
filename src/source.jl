@@ -35,8 +35,8 @@ function add_source!(world, gctx, spec; abscol::Int)
     
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
-        update_spherical_position!(spec.distance, src, world, ref_src, spec.yaw, spec.pitch) #TODO: spec-et átadni egészben.
-        update_RV_direction!(spec.rv_yaw, spec.rv_pitch, src, world, ref_src) #TODO: spec-et átadni egészben.
+        update_spherical_position!(spec, src, ref_src)
+        update_RV_direction!(spec, src, ref_src)
     end
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
     src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
@@ -195,18 +195,18 @@ function apply_wave_hit!(world)
 end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
-function update_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw::Float64, pitch::Float64)
+function update_spherical_position!(spec, src::Source, ref_src::Source)
     ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
-    dir = compute_dir(ref_src, yaw, pitch)          # ref RV-hez mért irány (yaw/pitch)
-    src.act_p = ref_pos + distance * dir            # új horgony pozíció távolság és irány szerint
+    dir = compute_dir(ref_src, spec.yaw, spec.pitch) # ref RV-hez mért irány (yaw/pitch)
+    src.act_p = ref_pos + spec.distance * dir       # új horgony pozíció távolság és irány szerint
     src.act_k = 0                                   # aktuális index reset
     src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
 end
 
 # RV irány beállítása; pozíció nem változik
-function update_RV_direction!(yaw::Float64, pitch::Float64, src::Source, world, ref_src::Source)
+function update_RV_direction!(spec, src::Source, ref_src::Source)
     rv_mag = sqrt(sum(abs2, src.base_RV))           # RV nagyságának megtartása
-    dir = compute_dir(ref_src, yaw, pitch)          # új irány számítása yaw/pitch alapján
+    dir = compute_dir(ref_src, spec.rv_yaw, spec.rv_pitch) # új irány számítása yaw/pitch alapján
     src.base_RV = rv_mag * dir                      # irány frissítése; horgony változatlan
     src.RV = src.base_RV
 end
@@ -245,13 +245,13 @@ function apply_RV_rescale!(RV::Float64, src::Source, world)
     seek_world_time!(world)
 end
 
-function apply_RV_direction!(yaw::Float64, pitch::Float64, src::Source, world, ref_src::Source)
-    update_RV_direction!(yaw, pitch, src, world, ref_src)
+function apply_RV_direction!(spec, src::Source, world)
+    update_RV_direction!(spec, src, world.sources[spec.ref])
     seek_world_time!(world)
 end
 
-function apply_spherical_position!(distance::Float64, src::Source, world, ref_src::Source, yaw::Float64, pitch::Float64)
-    update_spherical_position!(distance, src, world, ref_src, yaw, pitch)
+function apply_spherical_position!(spec, src::Source, world)
+    update_spherical_position!(spec, src, world.sources[spec.ref])
     seek_world_time!(world)
 end
 
