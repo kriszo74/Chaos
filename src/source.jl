@@ -7,8 +7,9 @@
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
     act_k::Int                   # aktuális index
-    RV::SVector{3, Float64}      # sebesség vektor TODO: RV-t külön tároljuk egységvektorként, amelyből származtatjuk a tényleges vektort.
-    base_RV::SVector{3, Float64} # alap RV vektor (seek resethez)
+    RV_u::SVector{3, Float64}    # aktuális RV irányegységvektor
+    base_RV_u::SVector{3, Float64} # alap RV irányegységvektor (seek resethez)
+    RV_mag::Float64              # RV abszolútérték
     RR::Float64                  # saját tengely körüli szögszerű paraméter (skalár, fénysebességhez viszonyítható)
     bas_t::Float64               # indulási idő
     positions::Vector{Point3d}   # pozíciók (Point3d)
@@ -24,8 +25,9 @@ function add_source!(world, gctx, spec; abscol::Int)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
-        SVector(spec.RV, 0.0, 0.0),             # kezdő RV vektor
-        SVector(spec.RV, 0.0, 0.0),             # alap RV vektor
+        SVector(1.0, 0.0, 0.0),                 # kezdő RV egységvektor
+        SVector(1.0, 0.0, 0.0),                 # alap RV egységvektor
+        spec.RV,                                # RV abszolútérték
         spec.RR,                                # saját tengely körüli RR
         0.0,                                    # indulási idő
         [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
@@ -65,7 +67,7 @@ function step_world!(world; step = world.E / 60)
     apply_wave_hit!(world)
     for src in world.sources
         p_ix = min(src.act_k + 1, length(src.positions))
-        act_pos = src.act_p + src.RV * step
+        act_pos = src.act_p + src.RV_u * src.RV_mag * step
         src.positions[p_ix] = Point3d(act_pos...)
         src.plot[:positions][] = src.positions
         src.act_p = act_pos
@@ -76,8 +78,7 @@ end
 const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
 const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
 function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
-    ref_RV = ref_src.base_RV                   # referencia RV vektora
-    u = ref_RV / sqrt(sum(abs2, ref_RV))       # ref RV irányegység
+    u = ref_src.base_RV_u                      # ref RV irányegység
     refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ                # fallback, ha közel párhuzamos
     e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
     e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
@@ -91,7 +92,7 @@ end
 # Pozíciók újragenerálása adott N alapján
 # TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function compute_positions(N::Int, src::Source, world)
-    dp = src.RV / world.density                                      # két impulzus közti pozíciólépés
+    dp = src.RV_u * src.RV_mag / world.density                       # két impulzus közti pozíciólépés
     return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
 end
 
@@ -162,13 +163,13 @@ function apply_wave_hit!(world)
                 to_rcv2 = to_rcv2_erix          # a legközelebbi impulzus középpontja és receiver forrás távolság^2-e
             end
             if emt_k == 0 || to_rcv2 < eps_tol || r2_min_emt - to_rcv2 < eps_tol; continue; end
-            # TODO: számold a relatív sebesség radiális komponensét, és ha kifelé megy (dot(to_rcv_u, rcv.RV) ≥ 0), akkor continue; így csak befelé haladva érvényesül az impulzus.
+            # TODO: számold a relatív sebesség radiális komponensét, és ha kifelé megy (dot(to_rcv_u, rcv.RV_u * rcv.RV_mag) ≥ 0), akkor continue; így csak befelé haladva érvényesül az impulzus.
 
             # ütközés történt, to_tgt egységvektorának meghatározása
             to_rcv_u, _ = unit_and_mag(to_rcv); isnothing(to_rcv_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
             # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-            emt_rv_dir = emt_k < length(emt.positions) ? SVector(emt.positions[emt_k+1]...) - emt_p : emt.RV / world.density # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+            emt_rv_dir = emt_k < length(emt.positions) ? SVector(emt.positions[emt_k+1]...) - emt_p : emt.RV_u * (emt.RV_mag / world.density) # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
             emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir) # src.RV egységvektora és hossza
 
             # múlttérsűrűség és taszítási vektor számítás
@@ -185,11 +186,10 @@ function apply_wave_hit!(world)
             emt_rot = isnothing(emt_rot_u) ? emt_rot_dir : emt_rot_u * emt.RR
 
             # eredő vektor számítás és tgt.RV irányba állítása
-            rcv_step = (rcv.RV + emt_v + emt_rot) / world.density # ez az eredő vektor, ezt kell hozzáadni rcv.positions[k]-hoz
-            rcv_rv_mag = sqrt(sum(abs2, rcv.RV))        # aktuális rcv.RV hossza
+            rcv_step = (rcv.RV_u * rcv.RV_mag + emt_v + emt_rot) / world.density # ez az eredő vektor, ezt kell hozzáadni rcv.positions[k]-hoz
             rcv_step_mag = sqrt(sum(abs2, rcv_step))    # step hossza
             rcv_step_mag == 0 && continue               # nulla step: nincs irány #TODO: bebizonyítani, hogy ez nem lehetséges és kivenni a guardot!
-            rcv.RV = rcv_step / rcv_step_mag * rcv_rv_mag# új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
+            rcv.RV_u = rcv_step / rcv_step_mag          # új irány: step irányába, eredeti nagysággal. #TODO: ha több forrás is hatással van tgt-re, akkor a forrás osztódik.
         end
     end
 end
@@ -205,10 +205,9 @@ end
 
 # RV irány beállítása; pozíció nem változik
 function update_RV_direction!(spec, src::Source, ref_src::Source)
-    rv_mag = sqrt(sum(abs2, src.base_RV))           # RV nagyságának megtartása
     dir = compute_dir(ref_src, spec.rv_yaw, spec.rv_pitch) # új irány számítása yaw/pitch alapján
-    src.base_RV = rv_mag * dir                      # irány frissítése; horgony változatlan
-    src.RV = src.base_RV
+    src.base_RV_u = dir                             # irány frissítése; horgony változatlan
+    src.RV_u = src.base_RV_u
 end
 
 # Pozíció alkalmazása: pálya és plot frissítése
@@ -220,7 +219,7 @@ end
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
 function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
     for src in world.sources
-        src.RV = src.base_RV
+        src.RV_u = src.base_RV_u
         src.act_p = SVector(src.positions[1]...)
         src.act_k = 0
         src.radii[] = fill(0.0, length(src.radii[]))
@@ -239,9 +238,7 @@ end
 
 # RV skálázása; irány megtartása
 function apply_RV_rescale!(RV::Float64, src::Source, world)
-    u = src.base_RV / sqrt(sum(abs2, src.base_RV))    # irány megtartása: normalizálás és skálázás
-    src.base_RV = u * RV                              # skálázott RV beállítása
-    src.RV = src.base_RV
+    src.RV_mag = RV                                   # skálázott RV beállítása
     seek_world_time!(world)
 end
 

@@ -96,7 +96,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
 
         # RV (skálár) – LIVE recompute
         mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV $(i)", 0.0:0.1:10.0;
-                   startvalue = sqrt(sum(abs2, src.RV)),
+                   startvalue = src.RV_mag,
                    onchange = v -> apply_RV_rescale!(v < eps(Float64) ? eps(Float64) : v, world.sources[i], world))
         
         # RR (skalár) – atlasz oszlop vezérlése (uv_transform), ideiglenes bekötés
@@ -119,7 +119,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
                            apply_spherical_position!(spec_ref[], src, world)
                        end)
 
-            # Ref azimut csúszka: pálya síkbeli elforgatása ref körül       
+            # Ref azimut csúszka: pálya síkbeli elforgatása ref körül
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "yaw $(i) [°]", -180:5:180;
                        startvalue = rad2deg(spec.yaw),
                        onchange = v -> begin
@@ -127,7 +127,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
                            apply_spherical_position!(spec_ref[], src, world)
                        end)
 
-            # Ref pitch csúszka: eleváció módosítása refhez képest       
+            # Ref pitch csúszka: eleváció módosítása refhez képest
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "pitch $(i) [°]", -90:5:90;
                        startvalue = rad2deg(spec.pitch),
                        onchange = v -> begin
@@ -143,7 +143,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
                            apply_RV_direction!(spec_ref[], src, world)
                        end)
             
-            # Ref RV pitch: irány döntése helyváltoztatás nélkül                       
+            # Ref RV pitch: irány döntése helyváltoztatás nélkül
             mk_slider!(gctx.fig, gctx.sources_gl, row += 1, "RV pitch $(i) [°]", -90:5:90;
                        startvalue = rad2deg(spec.rv_pitch),
                        onchange = v -> begin
