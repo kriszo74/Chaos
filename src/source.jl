@@ -3,6 +3,9 @@
 # Spherical pozicionálás (distance/yaw/pitch) és compute_dir alapú irányszámítás.
 #TODO: a függvények szignatúrájának felülvizsgálása, legyen egy logikus sorrend.
 
+const SOURCE_UV_T = typeof(Makie.uv_transform((Vec2f(0f0, 0f0), Vec2f(1f0, 0f0))))
+const SOURCE_UV_ID = Makie.uv_transform((Vec2f(0f0, 0.5f0), Vec2f(1f0, 0f0)))
+
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
@@ -12,9 +15,9 @@ mutable struct Source
     RV_mag::Float64              # RV abszolútérték
     RR::Float64                  # saját tengely körüli szögszerű paraméter (skalár, fénysebességhez viszonyítható)
     bas_t::Float64               # indulási idő
-    positions::Vector{Point3d}   # pozíciók (Point3d)
-    radii::Observable{Vector{Float64}}  # sugarak puffer
-    plot::Any                    # plot handle
+    anch_p::SVector{3, Float64}  # pálya horgony pozíciója
+    range::UnitRange{Int}        # közös puffer index-tartomány
+    uv_transform::SOURCE_UV_T    # UV transzform
     
     # futás-optimalizációs változók:
     radii_clear_needed::Bool     # radii nullázás jelző
@@ -30,9 +33,9 @@ function add_source!(world, gctx, spec; abscol::Int)
         spec.RV,                                # RV abszolútérték
         spec.RR,                                # saját tengely körüli RR
         0.0,                                    # indulási idő
-        [Point3d(SVector(0.0, 0.0, 0.0)...)],   # pálya első pontja a horgonyból
-        Observable(Float64[]),                  # sugarak puffer (observable)
-        nothing,                                # plot handle kezdetben üres
+        SVector(0.0, 0.0, 0.0),                 # pálya horgony pozíciója
+        1:0,                                    # közös puffer szelet (üres)
+        SOURCE_UV_ID,                           # UV transzform
         true)                                   # radii nullázás jelző
     
     if spec.ref !== nothing
@@ -41,21 +44,19 @@ function add_source!(world, gctx, spec; abscol::Int)
         update_RV_direction!(spec, src, ref_src)
     end
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
-    src.radii[] = fill(0.0, N)                               # sugarpuffer előkészítése N impulzushoz
-    src.positions = compute_positions(N, src, world)         # kezdeti pozíciósor generálása aktuális RV-vel
-
-    # UV-s marker és RR textúra alkalmazása
-    src.plot = meshscatter!(
-        gctx.scene,                             # 3D jelenet (LScene)
-        src.positions;                          # forrás pályapontjai
-        marker       = gctx.marker,             # UV-s gömb marker
-        markersize   = src.radii,               # példányonkénti sugárvektor
-        color        = gctx.atlas,              # textúra (Matrix{RGBAf})
-        uv_transform = compute_source_uv(abscol, gctx), # UV‑atlasz oszlop kiválasztása 
-        rotation     = Vec3f(0.0, pi/4, 0.0),   # ideiglenes alapforgatás TODO: mesh módosítása, hogy ne kelljen alaprotáció.
-        transparency = true,                    # átlátszóság engedélyezve
-        interpolate  = true,                    # textúrainterpoláció bekapcsolva
-        shading      = true)                    # fény-árnyék aktív
+    positions = compute_positions(N, src, world)             # kezdeti pozíciósor generálása aktuális RV-vel
+    src.uv_transform = compute_source_uv(abscol, gctx)       # UV‑atlasz oszlop kiválasztása
+    start_ix = length(world.positions_all) + 1               # közös puffer kezdő index
+    stop_ix = start_ix + N - 1                               # közös puffer záró index
+    src.range = start_ix:stop_ix                             # forrás szelet a közös pufferekben
+    append!(world.positions_all, positions)                  # közös pozíciós puffer bővítése
+    radii_all = world.radii_all[]                            # közös sugárpuffer
+    append!(radii_all, fill(0.0, N))                         # sugárértékek hozzáfűzése
+    world.radii_all[] = radii_all                            # observable frissítés
+    uv_all = world.uv_all[]                                  # közös UV puffer
+    append!(uv_all, fill(src.uv_transform, N))               # UV szelet inicializálás
+    world.uv_all[] = uv_all                                  # observable frissítés
+    world.plot[:positions][] = world.positions_all # plot pozíciók frissítése
     push!(world.sources, src)
     return src
 end
@@ -66,12 +67,12 @@ function step_world!(world; step = world.E / 60)
     update_radii!(world)  # sugárpuffer frissítése
     apply_wave_hit!(world)
     for src in world.sources
-        p_ix = min(src.act_k + 1, length(src.positions))
+        p_ix = min(src.act_k + 1, length(src.range))
         act_pos = src.act_p + src.RV_u * src.RV_mag * step
-        src.positions[p_ix] = Point3d(act_pos...)
-        src.plot[:positions][] = src.positions
+        world.positions_all[first(src.range) + p_ix - 1] = Point3d(act_pos...)
         src.act_p = act_pos
     end
+    world.plot[:positions][] = world.positions_all
 end
 
 # Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
@@ -93,18 +94,30 @@ end
 # TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function compute_positions(N::Int, src::Source, world)
     dp = src.RV_u * src.RV_mag / world.density                       # két impulzus közti pozíciólépés
-    return [Point3d((src.positions[1] + dp * k)...) for k in 0:N-1]  # pálya N ponttal
+    return [Point3d((src.anch_p + dp * k)...) for k in 0:N-1]        # pálya N ponttal
 end
 
 # Pufferhosszak frissítése density/max_t változásnál
 function update_sampling!(world)
+    empty!(world.positions_all)
+    world.radii_all[] = Float64[]
+    world.uv_all[] = SOURCE_UV_T[]
+    radii_all = world.radii_all[]
+    uv_all = world.uv_all[]
     for src in world.sources
         N = Int(ceil((world.max_t - src.bas_t) * world.density))
-        src.radii[] = fill(0.0, N)
-        src.positions = compute_positions(N, src, world)
-        src.plot[:positions][] = src.positions
+        positions = compute_positions(N, src, world)
+        start_ix = length(world.positions_all) + 1
+        stop_ix = start_ix + N - 1
+        src.range = start_ix:stop_ix
+        append!(world.positions_all, positions)
+        append!(radii_all, fill(0.0, N))
+        append!(uv_all, fill(src.uv_transform, N))
         src.radii_clear_needed = true
     end
+    world.radii_all[] = radii_all
+    world.uv_all[] = uv_all
+    world.plot[:positions][] = world.positions_all
 end
 
 # UV oszlop indexből uv_transform kiszámítása
@@ -117,8 +130,9 @@ end
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
+    radii_all = world.radii_all[]
     @inbounds for src in world.sources # források bejárása
-        radii = src.radii[]                         # sugárpuffer
+        radii = @view radii_all[src.range]          # sugárpuffer
         dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
         K = ceil(Int, round(dt_rel * world.density, digits = 12)) # aktív sugarak száma TODO: mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
         src.act_k = K                               # aktuális index
@@ -132,14 +146,14 @@ function update_radii!(world)
                 src.radii_clear_needed = false
             end
         end
-        src.radii[] = radii             # sugárpuffer frissítése
     end
+    world.radii_all[] = radii_all
 end
 
 # Realizáció vizsgálat: kifelé igazítja rcv (receiver, azaz realizáló forrás) RV-jét.
 function apply_wave_hit!(world)
     for emt in world.sources
-        emt_radii = emt.radii[]                 # emmiter (emt) sugárpuffer pillanatképe
+        emt_radii = @view world.radii_all[][emt.range] # emmiter (emt) sugárpuffer pillanatképe
         for rcv in world.sources                # ütközésvizsgálat minden forrásra (self is)
             emt_k = 0; min_gap2 = typemax(Float64); r2_min_emt = to_rcv2 = 0.0; emt_p = to_rcv = SVector(0.0, 0.0, 0.0);
             @inbounds for erix in eachindex(emt_radii)  # erix: Emmitter (emt) Radius (radii) IndeX
@@ -148,7 +162,7 @@ function apply_wave_hit!(world)
                 
                 # r^2 és célpont távolság^2 különbség számítása
                 r2_erix = r_erix * r_erix               # a vizsgált emitter impulzus sugárának négyzete
-                p_erix  = SVector(emt.positions[erix]...)   # a vizsgált emitter impulzus középpontja
+                p_erix  = SVector(world.positions_all[first(emt.range) + erix - 1]...)   # a vizsgált emitter impulzus középpontja
                 to_rcv_erix = rcv.act_p - p_erix        # irányvektor: p (a vizsgált emitter impulzus középpontja) -> rcv.akt_p
                 to_rcv2_erix = sum(abs2, to_rcv_erix)   # a vizsgált emitter impulzus középpontja és receiver forrás távolság^2-e
                 act_gap2 = r2_erix - to_rcv2_erix       # r^2 és távolság^2 különbsége
@@ -169,7 +183,7 @@ function apply_wave_hit!(world)
             to_rcv_u, _ = unit_and_mag(to_rcv); isnothing(to_rcv_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
             # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-            emt_rv_dir = emt_k < length(emt.positions) ? SVector(emt.positions[emt_k+1]...) - emt_p : emt.RV_u * (emt.RV_mag / world.density) # src.RV irányvektora TODO: legyen csak simán SVector(src.positions[i+1]...) - p, inkább + 1 pozíciót generálni.
+            emt_rv_dir = emt_k < length(emt.range) ? SVector(world.positions_all[first(emt.range) + emt_k]...) - emt_p : emt.RV_u * (emt.RV_mag / world.density) # src.RV irányvektora TODO: legyen csak simán SVector(world.positions_all[first(emt.range) + emt_k]...) - emt_p, inkább + 1 pozíciót generálni.
             emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir) # src.RV egységvektora és hossza
 
             # múlttérsűrűség és taszítási vektor számítás
@@ -196,11 +210,11 @@ end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
 function update_spherical_position!(spec, src::Source, ref_src::Source)
-    ref_pos = SVector(ref_src.positions[1]...)      # referencia horgony pozíciója (SVector)
+    ref_pos = ref_src.anch_p                        # referencia horgony pozíciója (SVector)
     dir = compute_dir(ref_src, spec.yaw, spec.pitch) # ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + spec.distance * dir       # új horgony pozíció távolság és irány szerint
+    src.anch_p = src.act_p                           # horgony frissítése
     src.act_k = 0                                   # aktuális index reset
-    src.positions[1] = Point3d(src.act_p...)        # pálya első pontja a horgonyból
 end
 
 # RV irány beállítása; pozíció nem változik
@@ -212,20 +226,22 @@ end
 
 # Pozíció alkalmazása: pálya és plot frissítése
 function apply_pose!(src::Source, world)
-    src.positions = compute_positions(length(src.positions), src, world)  # pálya újragenerálása
-    src.plot[:positions][] = src.positions                                # plot frissítése
+    world.positions_all[src.range] = compute_positions(length(src.range), src, world) # közös pozíciópuffer frissítése
+    world.plot[:positions][] = world.positions_all # plot frissítése
 end
 
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
 function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
+    radii_all = world.radii_all[]
     for src in world.sources
         src.RV_u = src.base_RV_u
-        src.act_p = SVector(src.positions[1]...)
+        src.act_p = src.anch_p
         src.act_k = 0
-        src.radii[] = fill(0.0, length(src.radii[]))
+        radii_all[src.range] = fill(0.0, length(src.range))
         apply_pose!(src, world)
         src.radii_clear_needed = true
     end
+    world.radii_all[] = radii_all
 
     world.t[] = 0.0
     t_limit = target_t - step + eps_tol
@@ -253,14 +269,17 @@ function apply_spherical_position!(spec, src::Source, world)
 end
 
 # UV‑transzform frissítése a forráson
-function apply_source_uv!(abscol::Int, src::Source, gctx)
-    src.plot[:uv_transform][] = compute_source_uv(abscol, gctx)   # UV transzform beállítása
+function apply_source_uv!(abscol::Int, src::Source, gctx, world)
+    src.uv_transform = compute_source_uv(abscol, gctx)            # UV transzform beállítása
+    uv_all = world.uv_all[]
+    uv_all[src.range] = fill(src.uv_transform, length(src.range))
+    world.uv_all[] = uv_all
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
 function apply_source_RR!(new_RR::Float64, src::Source, world, gctx, abscol::Int)
     src.RR = new_RR                         # RR skálár frissítése
-    apply_source_uv!(abscol, src, gctx)     # textúra oszlop frissítése
+    apply_source_uv!(abscol, src, gctx, world)     # textúra oszlop frissítése
     seek_world_time!(world)
     return src
 end

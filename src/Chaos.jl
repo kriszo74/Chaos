@@ -6,10 +6,10 @@ module Chaos
     using GeometryBasics
     using Colors
     using Observables  # Observable támogatás
-    #using Infiltrator
+    using Infiltrator
     
     # rendszer-paraméterek
-    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "0") == "1" # set APP_DEBUG=1 -> debug
+    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
 
     # Debug-only assert macro (0 overhead in release)
     macro dbg_assert(cond, msg="")
@@ -32,6 +32,10 @@ module Chaos
         max_t::Float64
         t::Observable{Float64}
         sources::Vector{Source}
+        positions_all::Vector{Point3d}
+        radii_all::Observable{Vector{Float64}}
+        uv_all::Observable{Vector{SOURCE_UV_T}}
+        plot::Any
     end
 
     include("3dtools.jl")
@@ -58,15 +62,26 @@ module Chaos
     function julia_main()::Cint
         #TODO: nyomozni:  build kozben lefut a GUI, es a Makie font‑ot probal betolteni. A font fajl nem talalhato, ezert a build elhasal.
         ccall(:jl_generating_output, Cint, ()) != 0 && return 0
-        
         @info "DEBUG_MODE = $DEBUG_MODE"
+
         rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
-        #TODO: a betöltendő konfigokra legyen ellenőrzés, pl. density csak pozitív egész szám lehet.
-        world = World(Float64(CFG["world"]["E"]), Float64(CFG["world"]["density"]), Float64(CFG["world"]["max_t"]), Observable(0.0), Source[])
         fig, scene = setup_scene()  # jelenet beállítása
-        setup_gui!(fig, scene, world, rt)
+        #TODO: a betöltendő konfigokra legyen ellenőrzés, pl. density csak pozitív egész szám lehet.
+        world = World(
+            Float64(CFG["world"]["E"]), 
+            Float64(CFG["world"]["density"]),
+            Float64(CFG["world"]["max_t"]),
+            Observable(0.0),
+            Source[],
+            Point3d[],
+            Observable(Float64[]),
+            Observable(SOURCE_UV_T[]),
+            nothing)
+
+        apply_preset! = setup_gui!(fig, scene, world, rt)
         screen = display(fig)  # ablak megjelenítése (screen visszaadva)
-        zoom!(scene.scene, 1.5)  # csak display(fig) után működik.
+        apply_preset!(CFG["presets"]["order"][1])
+        zoom!(scene.scene, 15)  # csak display(fig) után működik. #TODO: compute_initial_zoom(world, preset) helper létrehozása, hogy a nagyítás illeszkedjen a szimuláció végállapotához. 
         isinteractive() || wait(screen) # F5 (nem interaktív) futásnál blokkoljunk az ablak bezárásáig
         return 0
     end

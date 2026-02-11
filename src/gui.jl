@@ -64,10 +64,13 @@ preset_specs(preset::String) =
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset = first(CFG["presets"]["order"]))
     rt.paused[] = true      # rebuild közben álljunk meg
-    empty!(gctx.scene)      # teljes újraépítés
     foreach(delete!, contents(gctx.sources_gl))  # forráspanel elemeinek törlése
     trim!(gctx.sources_gl)  # üres sor/oszlop levágása
     empty!(world.sources)   # forráslista ürítése
+    empty!(world.positions_all)
+    world.radii_all[] = Float64[]
+    world.uv_all[] = SOURCE_UV_T[]
+    world.plot[:positions][] = world.positions_all
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
@@ -83,7 +86,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        apply_source_uv!(abscol(), src, gctx)
+                        apply_source_uv!(abscol(), src, gctx, world)
                     end)
 
         # alpha row (ALWAYS)
@@ -91,7 +94,7 @@ function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset 
                    startvalue = spec.alpha,
                    onchange = v -> begin
                        cur_alpha_ix[] = findfirst(==(v), Float32.(CFG["gui"]["ALPHA_VALUES"]))
-                       apply_source_uv!(abscol(), src, gctx)
+                       apply_source_uv!(abscol(), src, gctx, world)
                    end)
 
         # RV (skálár) – LIVE recompute
@@ -169,19 +172,31 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     gctx.sources_gl.alignmode = Outside(0) # külső padding
 
     fig[1:2, 2] = scene  # jelenet: helyezés jobbra, két sor magas
-    rebuild_sources_panel!(gctx, world, rt) # Dinamikus Sources panel
+    world.plot = meshscatter!(
+        scene,
+        world.positions_all;
+        marker       = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0),
+        markersize   = world.radii_all,
+        color        = rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]); alphas=Float32.(CFG["gui"]["ALPHA_VALUES"]))[1],
+        uv_transform = world.uv_all,
+        rotation     = Vec3f(0.0, pi/4, 0.0), #TODO: mesh módosítása, hogy ne kelljen alaprotáció.
+        transparency = true,
+        interpolate  = true,
+        shading      = true) 
 
     # --- Vezérlők ---
     mk_slider!(fig, gctx.gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
                onchange = v -> (world.E = v))
 
+    function apply_preset!(sel)
+        rebuild_sources_panel!(gctx, world, rt; preset = sel)
+        seek_world_time!(world)
+    end
+
     # Preset választó
     mk_menu!(fig, gctx.gl, 2, "Preset", CFG["presets"]["order"]; selected_index = 1,
-             onchange = sel -> begin
-                 rebuild_sources_panel!(gctx, world, rt; preset = sel)
-                 seek_world_time!(world) # Re-apply aktuális t a friss jelenetre – közvetlen frissítés
-             end)
-
+             onchange = apply_preset!)
+           
     # Globális csúszkák (density, max_t) és az idő-csúszka (t)
     mk_slider!(fig, gctx.gl, 6, "density", CFG["gui"]["DENSITY_VALUES"];
                startvalue = world.density,
@@ -240,4 +255,6 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
             notify(rt.pause_ev)
         end
     end
+
+    return apply_preset! # preset alkalmazó visszaadása
 end
