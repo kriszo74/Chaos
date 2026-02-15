@@ -63,14 +63,11 @@ preset_specs(preset::String) =
 
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(gctx::GuiCtx, world::World, rt::Runtime; preset = first(CFG["presets"]["order"]))
-    rt.paused[] = true      # rebuild közben álljunk meg
+    rt.paused[] = true            # rebuild közben álljunk meg
     foreach(delete!, contents(gctx.sources_gl))  # forráspanel elemeinek törlése
-    trim!(gctx.sources_gl)  # üres sor/oszlop levágása
-    empty!(world.sources)   # forráslista ürítése
-    empty!(world.positions_all)
-    world.radii_all[] = Float64[]
-    world.uv_all[] = SOURCE_UV_T[]
-    world.plot[:positions][] = world.positions_all
+    trim!(gctx.sources_gl)        # üres sor/oszlop levágása
+    clear_sources_buffers!(world) # world pufferek resetelése
+    empty!(world.sources)         # forráslista ürítése
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0

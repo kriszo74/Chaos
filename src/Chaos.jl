@@ -36,6 +36,9 @@ module Chaos
         radii_all::Observable{Vector{Float64}}
         uv_all::Observable{Vector{SOURCE_UV_T}}
         plot::Any
+
+        # futás-optimalizációs változók:
+        next_start_ix::Int           # következő közös puffer kezdő indexe
     end
 
     include("3dtools.jl")
@@ -76,7 +79,8 @@ module Chaos
             Point3d[],
             Observable(Float64[]),
             Observable(SOURCE_UV_T[]),
-            nothing)
+            nothing,
+            1)
 
         apply_preset! = setup_gui!(fig, scene, world, rt)
         screen = display(fig)  # ablak megjelenítése (screen visszaadva)

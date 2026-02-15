@@ -35,7 +35,7 @@ function add_source!(world, gctx, spec; abscol::Int)
         0.0,                                    # indulási idő
         SVector(0.0, 0.0, 0.0),                 # pálya horgony pozíciója
         1:0,                                    # közös puffer szelet (üres)
-        SOURCE_UV_ID,                           # UV transzform
+        compute_source_uv(abscol, gctx),        # UV‑atlasz oszlop kiválasztása
         true)                                   # radii nullázás jelző
     
     if spec.ref !== nothing
@@ -43,22 +43,23 @@ function add_source!(world, gctx, spec; abscol::Int)
         update_spherical_position!(spec, src, ref_src)
         update_RV_direction!(spec, src, ref_src)
     end
-    N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
-    positions = compute_positions(N, src, world)             # kezdeti pozíciósor generálása aktuális RV-vel
-    src.uv_transform = compute_source_uv(abscol, gctx)       # UV‑atlasz oszlop kiválasztása
-    start_ix = length(world.positions_all) + 1               # közös puffer kezdő index
-    stop_ix = start_ix + N - 1                               # közös puffer záró index
-    src.range = start_ix:stop_ix                             # forrás szelet a közös pufferekben
-    append!(world.positions_all, positions)                  # közös pozíciós puffer bővítése
-    radii_all = world.radii_all[]                            # közös sugárpuffer
-    append!(radii_all, fill(0.0, N))                         # sugárértékek hozzáfűzése
-    world.radii_all[] = radii_all                            # observable frissítés
-    uv_all = world.uv_all[]                                  # közös UV puffer
-    append!(uv_all, fill(src.uv_transform, N))               # UV szelet inicializálás
-    world.uv_all[] = uv_all                                  # observable frissítés
-    world.plot[:positions][] = world.positions_all # plot pozíciók frissítése
-    push!(world.sources, src)
+
+    build_source!(world, src)                    # forrás puffereinek felépítése
+    notify(world.uv_all)                         # UV változás kirajzolásának triggerelése
+    push!(world.sources, src)                    # forrás regisztrálása a listában
     return src
+end
+
+# közös pufferek bővítése és forrás tartományának kiosztása
+function build_source!(world, src)
+    N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
+    start_ix = world.next_start_ix                           # közös puffer kezdő index
+    world.next_start_ix = start_ix + N                       # következő forrás kezdő indexe
+    src.range = start_ix:world.next_start_ix -1              # forrás szelet a közös pufferekben
+
+    append!(world.positions_all, compute_positions(N, src, world)) # kezdeti pozíciósor, aktuális RV-vel a közös pufferhez
+    append!(world.radii_all[], fill(0.0, N))                 # sugárértékek hozzáfűzése
+    append!(world.uv_all[], fill(src.uv_transform, N))       # UV puffer bővítése alap transzformmal
 end
 
 # Sugarak frissítése a world.t alapján
@@ -80,10 +81,10 @@ const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
 const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
 function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
     u = ref_src.base_RV_u                      # ref RV irányegység
-    refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ                # fallback, ha közel párhuzamos
+    refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ # fallback, ha közel párhuzamos
     e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
     e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1])  # e3 = u × e2
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # e3 = u × e2
     sy, cy = sincos(yaw)                       # yaw szinusz és koszinusz
     sp, cp = sincos(pitch)                     # pitch szinusz és koszinusz
     dir = cp*cy*e2 + cp*sy*e3 + sp*u           # irány komponensek
@@ -97,27 +98,22 @@ function compute_positions(N::Int, src::Source, world)
     return [Point3d((src.anch_p + dp * k)...) for k in 0:N-1]        # pálya N ponttal
 end
 
+# közös forráspufferek alapállapotba visszaállítása
+function clear_sources_buffers!(world)
+    empty!(world.positions_all)     # pozíciópuffer ürítése
+    world.radii_all[] = Float64[]   # sugárpuffer ürítése
+    world.uv_all[] = SOURCE_UV_T[]  # UV puffer ürítése
+    world.next_start_ix = 1         # indexszámláló visszaállítása
+end
+
 # Pufferhosszak frissítése density/max_t változásnál
 function update_sampling!(world)
-    empty!(world.positions_all)
-    world.radii_all[] = Float64[]
-    world.uv_all[] = SOURCE_UV_T[]
-    radii_all = world.radii_all[]
-    uv_all = world.uv_all[]
+    clear_sources_buffers!(world)   # pufferek újraépítés előtti nullázása
     for src in world.sources
-        N = Int(ceil((world.max_t - src.bas_t) * world.density))
-        positions = compute_positions(N, src, world)
-        start_ix = length(world.positions_all) + 1
-        stop_ix = start_ix + N - 1
-        src.range = start_ix:stop_ix
-        append!(world.positions_all, positions)
-        append!(radii_all, fill(0.0, N))
-        append!(uv_all, fill(src.uv_transform, N))
-        src.radii_clear_needed = true
+        build_source!(world, src)       # új mintavételezésű puffer-szelet építése
+        src.radii_clear_needed = true   # első radii frissítésnél inaktív rész nullázása
     end
-    world.radii_all[] = radii_all
-    world.uv_all[] = uv_all
-    world.plot[:positions][] = world.positions_all
+    notify(world.uv_all)                # UV frissítés kirajzolásának triggerelése
 end
 
 # UV oszlop indexből uv_transform kiszámítása
@@ -271,9 +267,8 @@ end
 # UV‑transzform frissítése a forráson
 function apply_source_uv!(abscol::Int, src::Source, gctx, world)
     src.uv_transform = compute_source_uv(abscol, gctx)            # UV transzform beállítása
-    uv_all = world.uv_all[]
-    uv_all[src.range] = fill(src.uv_transform, length(src.range))
-    world.uv_all[] = uv_all
+    @views fill!(world.uv_all[][src.range], src.uv_transform)
+    notify(world.uv_all)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
