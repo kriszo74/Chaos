@@ -178,7 +178,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
 
     function apply_preset!(sel)
         rebuild_sources_panel!(fig, sources_gl, ncols, cols, world, rt; preset = sel)
-        seek_world_time!(world)
+        seek_world_time!(world, recompute = false)
     end
 
     # Preset választó
@@ -202,7 +202,7 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                         disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
                         rt.paused[] = true
                         world.t[] = v
-                        seek_world_time!(world)
+                        seek_world_time!(world; recompute = false)
                     end)
     
     on(world.t) do tv

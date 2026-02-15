@@ -52,7 +52,7 @@ end
 
 # közös pufferek bővítése és forrás tartományának kiosztása
 function build_source!(world, src)
-    N = Int(ceil((world.max_t - src.bas_t) * world.density)) # pozíciók/sugarak előkészítése
+    N = Int(ceil((world.max_t - src.bas_t) * world.density)) + 1 # pozíciók/sugarak előkészítése
     start_ix = world.next_start_ix                           # közös puffer kezdő index
     world.next_start_ix = start_ix + N                       # következő forrás kezdő indexe
     src.range = start_ix:world.next_start_ix -1              # forrás szelet a közös pufferekben
@@ -68,10 +68,8 @@ function step_world!(world; step = world.E / 60)
     update_radii!(world)  # sugárpuffer frissítése
     apply_wave_hit!(world)
     for src in world.sources
-        p_ix = min(src.act_k + 1, length(src.range))
-        act_pos = src.act_p + src.RV_u * src.RV_mag * step
-        world.positions_all[first(src.range) + p_ix - 1] = Point3d(act_pos...)
-        src.act_p = act_pos
+        src.act_p += src.RV_u * src.RV_mag * step
+        world.positions_all[first(src.range) + src.act_k] = Point3d(src.act_p...)
     end
     world.plot[:positions][] = world.positions_all
 end
@@ -207,9 +205,9 @@ end
 # Referencia irány (yaw/pitch) alapján horgony beállítása
 function update_spherical_position!(spec, src::Source, ref_src::Source)
     ref_pos = ref_src.anch_p                        # referencia horgony pozíciója (SVector)
-    dir = compute_dir(ref_src, spec.yaw, spec.pitch) # ref RV-hez mért irány (yaw/pitch)
+    dir = compute_dir(ref_src, spec.yaw, spec.pitch)# ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + spec.distance * dir       # új horgony pozíció távolság és irány szerint
-    src.anch_p = src.act_p                           # horgony frissítése
+    src.anch_p = src.act_p                          # horgony frissítése
     src.act_k = 0                                   # aktuális index reset
 end
 
@@ -220,30 +218,27 @@ function update_RV_direction!(spec, src::Source, ref_src::Source)
     src.RV_u = src.base_RV_u
 end
 
-# Pozíció alkalmazása: pálya és plot frissítése
-function apply_pose!(src::Source, world)
-    world.positions_all[src.range] = compute_positions(length(src.range), src, world) # közös pozíciópuffer frissítése
-    world.plot[:positions][] = world.positions_all # plot frissítése
-end
-
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
-function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60)
-    radii_all = world.radii_all[]
+function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60, recompute = true)
     for src in world.sources
-        src.RV_u = src.base_RV_u
-        src.act_p = src.anch_p
-        src.act_k = 0
-        radii_all[src.range] = fill(0.0, length(src.range))
-        apply_pose!(src, world)
-        src.radii_clear_needed = true
+        src.RV_u = src.base_RV_u # irány visszaállítása alapértékre
+        src.act_p = src.anch_p   # aktuális pozíció visszaállítása horgonyra
+        src.act_k = 0            # aktuális sugárindex nullázása
+        if recompute world.positions_all[src.range] = compute_positions(length(src.range), src, world) end # pályapuffer újragenerálása, ha szükséges
     end
-    world.radii_all[] = radii_all
-
+    
+    fill!(world.radii_all[], 0.0)   # sugárpuffer teljes nullázása TODO: egyelőre szükséges, de jó lenne, ha update_radii végezné.
+    notify(world.radii_all)         # sugárpuffer változásának jelzése TODO: egyelőre szükséges. : egyelőre szükséges, de jó lenne, ha update_radii végezné.
+    
     world.t[] = 0.0
-    t_limit = target_t - step + eps_tol
-    while world.t[] < t_limit
-        world.t[] += step
-        step_world!(world; step)
+    t_limit = target_t - step + eps_tol # utolsó teljes szimulációs lépés felső korlátja
+    if t_limit <= 0.0                   # nincs teljes lépés, a while ciklus kimarad
+
+    else
+        while world.t[] < t_limit
+            world.t[] += step
+            step_world!(world; step)    # világállapot léptetése és kirajzolása
+        end
     end
     world.t[] = target_t
 end
