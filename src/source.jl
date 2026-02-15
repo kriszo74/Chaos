@@ -24,7 +24,7 @@ mutable struct Source
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-function add_source!(world, gctx, spec; abscol::Int)
+function add_source!(world, cols::Int, spec; sel_col::Int)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
@@ -35,7 +35,7 @@ function add_source!(world, gctx, spec; abscol::Int)
         0.0,                                    # indulási idő
         SVector(0.0, 0.0, 0.0),                 # pálya horgony pozíciója
         1:0,                                    # közös puffer szelet (üres)
-        compute_source_uv(abscol, gctx),        # UV‑atlasz oszlop kiválasztása
+        compute_source_uv(sel_col, cols),       # UV‑atlasz oszlop kiválasztása
         true)                                   # radii nullázás jelző
     
     if spec.ref !== nothing
@@ -117,9 +117,9 @@ function update_sampling!(world)
 end
 
 # UV oszlop indexből uv_transform kiszámítása
-function compute_source_uv(abscol::Int, gctx)
-    u0 = Float32((abscol - 1) / gctx.cols)                          # oszlop kezdő U koordináta
-    sx = 1f0 / Float32(gctx.cols)                                   # oszlopszélesség
+function compute_source_uv(sel_col::Int, cols::Int)
+    u0 = Float32((sel_col - 1) / cols)                              # oszlop kezdő U koordináta
+    sx = 1f0 / Float32(cols)                                        # oszlopszélesség
     return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
 end
 
@@ -265,16 +265,16 @@ function apply_spherical_position!(spec, src::Source, world)
 end
 
 # UV‑transzform frissítése a forráson
-function apply_source_uv!(abscol::Int, src::Source, gctx, world)
-    src.uv_transform = compute_source_uv(abscol, gctx)            # UV transzform beállítása
+function apply_source_uv!(sel_col::Int, src::Source, cols::Int, world)
+    src.uv_transform = compute_source_uv(sel_col, cols)           # UV transzform beállítása
     @views fill!(world.uv_all[][src.range], src.uv_transform)
     notify(world.uv_all)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
-function apply_source_RR!(new_RR::Float64, src::Source, world, gctx, abscol::Int)
+function apply_source_RR!(new_RR::Float64, src::Source, world, cols::Int, sel_col::Int)
     src.RR = new_RR                         # RR skálár frissítése
-    apply_source_uv!(abscol, src, gctx, world)     # textúra oszlop frissítése
+    apply_source_uv!(sel_col, src, cols, world)     # textúra oszlop frissítése
     seek_world_time!(world)
     return src
 end
