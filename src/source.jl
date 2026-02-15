@@ -18,9 +18,6 @@ mutable struct Source
     anch_p::SVector{3, Float64}  # pálya horgony pozíciója
     range::UnitRange{Int}        # közös puffer index-tartomány
     uv_transform::SOURCE_UV_T    # UV transzform
-    
-    # futás-optimalizációs változók:
-    radii_clear_needed::Bool     # radii nullázás jelző
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
@@ -35,8 +32,7 @@ function add_source!(world, cols::Int, spec; sel_col::Int)
         0.0,                                    # indulási idő
         SVector(0.0, 0.0, 0.0),                 # pálya horgony pozíciója
         1:0,                                    # közös puffer szelet (üres)
-        compute_source_uv(sel_col, cols),       # UV‑atlasz oszlop kiválasztása
-        true)                                   # radii nullázás jelző
+        compute_source_uv(sel_col, cols))       # UV‑atlasz oszlop kiválasztása
     
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
@@ -109,7 +105,6 @@ function update_sampling!(world)
     clear_sources_buffers!(world)   # pufferek újraépítés előtti nullázása
     for src in world.sources
         build_source!(world, src)       # új mintavételezésű puffer-szelet építése
-        src.radii_clear_needed = true   # első radii frissítésnél inaktív rész nullázása
     end
     notify(world.uv_all)                # UV frissítés kirajzolásának triggerelése
 end
@@ -124,24 +119,16 @@ end
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
-    radii_all = world.radii_all[]
     @inbounds for src in world.sources # források bejárása
-        radii = @view radii_all[src.range]          # sugárpuffer
+        radii = @view world.radii_all[][src.range]  # sugárpuffer
         dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
-        K = ceil(Int, round(dt_rel * world.density, digits = 12)) # aktív sugarak száma TODO: mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
+        K = ceil(Int, round(dt_rel * world.density, digits = 12)) # aktív sugarak száma TODO: OOB veszélyt kezelni / mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
         src.act_k = K                               # aktuális index
-        @inbounds begin
-            for i in 1:K                            # aktív szegmensek frissítése
-                radii[i] = r = dt_rel - (i-1) / world.density   # sugár idő az i. impulzushoz
-            end
-            if src.radii_clear_needed
-                N = length(radii)                       # pufferhossz
-                K < N && fill!(view(radii, K+1:N), 0.0) # inaktív szakasz nullázása: csak első futásnál és visszatekerésnél szükséges.
-                src.radii_clear_needed = false
-            end
+        for i in 1:K                                # aktív szegmensek frissítése
+            radii[i] = r = dt_rel - (i-1) / world.density         # sugár idő az i. impulzushoz
         end
     end
-    world.radii_all[] = radii_all
+    notify(world.radii_all)
 end
 
 # Realizáció vizsgálat: kifelé igazítja rcv (receiver, azaz realizáló forrás) RV-jét.
@@ -226,19 +213,15 @@ function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E /
         src.act_k = 0            # aktuális sugárindex nullázása
         if recompute world.positions_all[src.range] = compute_positions(length(src.range), src, world) end # pályapuffer újragenerálása, ha szükséges
     end
-    
-    fill!(world.radii_all[], 0.0)   # sugárpuffer teljes nullázása TODO: egyelőre szükséges, de jó lenne, ha update_radii végezné.
-    notify(world.radii_all)         # sugárpuffer változásának jelzése TODO: egyelőre szükséges. : egyelőre szükséges, de jó lenne, ha update_radii végezné.
-    
-    world.t[] = 0.0
-    t_limit = target_t - step + eps_tol # utolsó teljes szimulációs lépés felső korlátja
-    if t_limit <= 0.0                   # nincs teljes lépés, a while ciklus kimarad
 
-    else
-        while world.t[] < t_limit
-            world.t[] += step
-            step_world!(world; step)    # világállapot léptetése és kirajzolása
-        end
+    t_limit = target_t - step + eps_tol         # utolsó teljes szimulációs lépés felső korlátja
+    fill!(world.radii_all[], 0.0)               # sugárpuffer teljes nullázása
+    t_limit <= 0.0 && notify(world.radii_all)   # sugárpuffer változásának jelzése
+
+    world.t[] = 0.0
+    while world.t[] < t_limit
+        world.t[] += step
+        step_world!(world; step)    # világállapot léptetése és kirajzolása
     end
     world.t[] = target_t
 end
