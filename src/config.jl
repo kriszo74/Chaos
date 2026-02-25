@@ -7,10 +7,13 @@ using TOML
 function load_config!(path::AbstractString = joinpath(@__DIR__, "..", "config.toml"))
     cfg = TOML.parsefile(path)
     alpha_values = Float32.(cfg["gui"]["ALPHA_VALUES"])
+    fade_profiles = String.(cfg["gui"]["FADE_PROFILE_ORDER"])
     for tbl in cfg["presets"]["table"]
         for e in tbl["entries"]
             alpha = Float32(e["alpha"])
             @dbg_assert any(==(alpha), alpha_values) "Ismeretlen alpha a presets.table.entries-ben"
+            fade = String(get(e, "fade", "off"))
+            @dbg_assert any(==(fade), fade_profiles) "Ismeretlen fade a presets.table.entries-ben"
         end
     end
     return cfg

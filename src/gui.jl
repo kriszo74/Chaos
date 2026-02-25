@@ -39,6 +39,9 @@ end
 # Hue kiosztás configból: címkék és index lookup
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
+const FADE_PROFILE_LABELS = String.(CFG["gui"]["FADE_PROFILE_ORDER"])
+const FADE_RATIO_BREAKS_BY_PROFILE = Dict(name => Float64.(CFG["gui"]["FADE_RATIO_BREAKS"][name]) for name in FADE_PROFILE_LABELS)
+const ALPHA_MAX_START_IX = length(ALPHA_VALUES_F32) - maximum(length(v) for v in values(FADE_RATIO_BREAKS_BY_PROFILE)) + 1
 
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
@@ -50,7 +53,9 @@ preset_specs(preset::String) =
       yaw    = deg2rad(e["yaw_deg"]),        # azimut [rad] a ref RV tengelyéhez viszonyítva
       pitch  = deg2rad(e["pitch_deg"]),      # eleváció [rad] a Π₀ síkjától felfelé (+) / lefelé (−)
       rv_yaw = deg2rad(e["rv_yaw_deg"]),     # RV irány azimut [rad]
-      rv_pitch = deg2rad(e["rv_pitch_deg"])) for e in find_entries_by_name(CFG["presets"]["table"], preset)]
+      rv_pitch = deg2rad(e["rv_pitch_deg"]), # RV irány eleváció [rad]
+      fade_profile = get(e, "fade", "off"),
+      fade_ratio_edges = FADE_RATIO_BREAKS_BY_PROFILE[get(e, "fade", "off")]) for e in find_entries_by_name(CFG["presets"]["table"], preset)]
 
 # Forráspanelek újraépítése és jelenet megtisztítása
 function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::World, rt::Runtime; preset = first(CFG["presets"]["order"]))
@@ -65,7 +70,9 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
     for (i, spec) in enumerate(preset_specs(preset))
         cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
-        cur_alpha_ix = Ref(findfirst(==(spec.alpha), Float32.(CFG["gui"]["ALPHA_VALUES"]))) 
+        cur_alpha_ix = Ref(min(findfirst(==(spec.alpha), ALPHA_VALUES_F32), ALPHA_MAX_START_IX))
+        cur_fade_ix = Ref(findfirst(==(spec.fade_profile), FADE_PROFILE_LABELS))
+        fade_breaks() = FADE_RATIO_BREAKS_BY_PROFILE[FADE_PROFILE_LABELS[cur_fade_ix[]]]
         sel_col() = (cur_h_ix[] - 1) * ncols + (cur_rr_offset[] - 1) * length(CFG["gui"]["ALPHA_VALUES"]) + cur_alpha_ix[]
         src = add_source!(world, cols, spec; sel_col=sel_col())
 
@@ -78,12 +85,23 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
                     end)
 
         # alpha row (ALWAYS)
-        mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", Float32.(CFG["gui"]["ALPHA_VALUES"]);
-                   startvalue = spec.alpha,
+        mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", ALPHA_VALUES_F32[1:ALPHA_MAX_START_IX];
+                   startvalue = ALPHA_VALUES_F32[cur_alpha_ix[]],
                    onchange = v -> begin
-                       cur_alpha_ix[] = findfirst(==(v), Float32.(CFG["gui"]["ALPHA_VALUES"]))
+                       cur_alpha_ix[] = findfirst(==(v), ALPHA_VALUES_F32[1:ALPHA_MAX_START_IX])
+                       @info "cur_alpha_ix: $cur_alpha_ix"
                        apply_source_uv!(sel_col(), src, cols, world)
                    end)
+
+        # alpha halványulási profil (DISCRETE)
+        mk_menu!(fig, sources_gl, row += 1, "fade $(i)", FADE_PROFILE_LABELS;
+                    selected_index = cur_fade_ix[],
+                    onchange = sel -> begin
+                        cur_fade_ix[] = findfirst(==(sel), FADE_PROFILE_LABELS)
+                        src.fade_ratio_edges = fade_breaks()
+                        rebuild_source_fade_breaks!(src, world)
+                        update_radii!(world)
+                    end)
 
         # RV (skálár) – LIVE recompute
         mk_slider!(fig, sources_gl, row += 1, "RV $(i)", 0.0:0.1:10.0;
@@ -191,7 +209,6 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                onchange = v -> begin
                    world.density = v
                    update_sampling!(world)
-                   seek_world_time!(world)
                end)
 
     # t-idő csúszka: scrub előre-hátra (automatikus pause)
@@ -217,10 +234,8 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
                startvalue = world.max_t,
                onchange = v -> begin
                    world.max_t = v
-                   update_sampling!(world)
-                   
                    sT.range[] = 0.0:0.01:world.max_t # Frissítsük a t csúszka tartományát
-                   seek_world_time!(world)
+                   update_sampling!(world)
     end)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)

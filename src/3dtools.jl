@@ -75,9 +75,6 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
     return fig, scene
 end
 
-# 30°-os hue → név hozzárendelés (0,30,…,330)
-const HUE30_NAMES = Dict{Int,Symbol}(0=>:red, 30=>:orange, 60=>:yellow, 90=>:chartreuse, 120=>:green, 150=>:springgreen, 180=>:cyan, 210=>:dodgerblue, 240=>:blue, 270=>:indigo, 300=>:magenta, 330=>:deeppink)
-
 # Atlasz 12 közép-hue-hoz; oszlopok r∈[0,1] (parts+1), sorok: neg/mid/pos.
 function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32; s::Float32=1f0, v::Float32=1f0, alphas::Vector{Float32}=Float32[1f0]) 
     ncols = Int(floor(RR_MAX / RR_STEP)) + 1                       # RR oszlopszám (RR_MAX/RR_STEP + 1)

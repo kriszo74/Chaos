@@ -5,6 +5,8 @@
 
 const SOURCE_UV_T = typeof(Makie.uv_transform((Vec2f(0f0, 0f0), Vec2f(1f0, 0f0))))
 const SOURCE_UV_ID = Makie.uv_transform((Vec2f(0f0, 0.5f0), Vec2f(1f0, 0f0)))
+const ALPHA_VALUES_F32 = Float32.(CFG["gui"]["ALPHA_VALUES"])
+const ALPHA_VALUES_COUNT = length(ALPHA_VALUES_F32)
 
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
@@ -18,10 +20,15 @@ mutable struct Source
     anch_p::SVector{3, Float64}  # pálya horgony pozíciója
     range::UnitRange{Int}        # közös puffer index-tartomány
     uv_transform::SOURCE_UV_T    # UV transzform
+    uv_alpha_bank::Vector{SOURCE_UV_T} # UV bank a fade szintekhez
+    fade_ratio_edges::Vector{Float64}  # fade arány-határok
+    fade_radius_breaks::Vector{Float64}# konkrét sugár-határok
+    max_fade_ix::Int
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
 function add_source!(world, cols::Int, spec; sel_col::Int)
+    uv_alpha_bank = compute_source_uvs(sel_col, cols, spec.fade_ratio_edges)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
@@ -32,8 +39,12 @@ function add_source!(world, cols::Int, spec; sel_col::Int)
         0.0,                                    # indulási idő
         SVector(0.0, 0.0, 0.0),                 # pálya horgony pozíciója
         1:0,                                    # közös puffer szelet (üres)
-        compute_source_uv(sel_col, cols))       # UV‑atlasz oszlop kiválasztása
-    
+        uv_alpha_bank[1],                       # UV‑atlasz oszlop kiválasztása
+        uv_alpha_bank,                          # UV alpha bank
+        Float64.(spec.fade_ratio_edges),        # fade arány-határok
+        Float64[],                              # konkrét sugár-határok
+        1)
+
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
         update_spherical_position!(spec, src, ref_src)
@@ -41,7 +52,6 @@ function add_source!(world, cols::Int, spec; sel_col::Int)
     end
 
     build_source!(world, src)                    # forrás puffereinek felépítése
-    notify(world.uv_all)                         # UV változás kirajzolásának triggerelése
     push!(world.sources, src)                    # forrás regisztrálása a listában
     return src
 end
@@ -52,6 +62,7 @@ function build_source!(world, src)
     start_ix = world.next_start_ix                           # közös puffer kezdő index
     world.next_start_ix = start_ix + N                       # következő forrás kezdő indexe
     src.range = start_ix:world.next_start_ix -1              # forrás szelet a közös pufferekben
+    rebuild_source_fade_breaks!(src, world)                  # arányhatárok sugárra fordítva
 
     append!(world.positions_all, compute_positions(N, src, world)) # kezdeti pozíciósor, aktuális RV-vel a közös pufferhez
     append!(world.radii_all[], fill(0.0, N))                 # sugárértékek hozzáfűzése
@@ -106,29 +117,46 @@ function update_sampling!(world)
     for src in world.sources
         build_source!(world, src)       # új mintavételezésű puffer-szelet építése
     end
-    notify(world.uv_all)                # UV frissítés kirajzolásának triggerelése
+    seek_world_time!(world, recompute = false)
 end
 
-# UV oszlop indexből uv_transform kiszámítása
-function compute_source_uv(sel_col::Int, cols::Int)
-    u0 = Float32((sel_col - 1) / cols)                              # oszlop kezdő U koordináta
+# UV bank készítése a kiválasztott oszlopból, egymást követő alpha oszlopokkal
+function compute_source_uvs(sel_col::Int, cols::Int, fade_ratio_edges)
     sx = 1f0 / Float32(cols)                                        # oszlopszélesség
-    return Makie.uv_transform((Vec2f(0f0, u0 + sx/2), Vec2f(1f0, 0f0))) # UV eltolás + skálázás
+
+    # DEBUG kód
+    # uvs = Vector{SOURCE_UV_T}(undef, length(fade_ratio_edges))
+    # for i in eachindex(fade_ratio_edges)
+    #     #uv = Makie.uv_transform((Vec2f(0f0, (sel_col - length(fade_ratio_edges) + i - 1) / cols + sx / 2), Vec2f(1f0, 0f0)))
+    #     uv = Makie.uv_transform((Vec2f(0f0, (sel_col - i + 1) / cols + sx / 2), Vec2f(1f0, 0f0)))
+    #     uvs[i] = uv
+    # end
+    # if length(uvs) > 1
+    #     @info "sel_col: $sel_col, uvs: $(uvs[1][8]), $(uvs[2][8]) ,$(uvs[3][8]), $(uvs[4][8]), $(uvs[5][8])"
+    # else 
+    #     @info "sel_col: $sel_col, uvs: $(uvs[1])"
+    # end
+    #return uvs
+    return [Makie.uv_transform((Vec2f(0f0, (sel_col - i + 1) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
 end
 
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
     @inbounds for src in world.sources # források bejárása
-        radii = @view world.radii_all[][src.range]  # sugárpuffer
-        dt_rel = (world.t[] - src.bas_t)            # relatív idő az indulástól
-        K = ceil(Int, round(dt_rel * world.density, digits = 12)) # aktív sugarak száma TODO: OOB veszélyt kezelni / mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
-        src.act_k = K                               # aktuális index
-        for i in 1:K                                # aktív szegmensek frissítése
+        rg = src.range                                  # forrás tartomány
+        radii = @view world.radii_all[][rg]             # sugárpuffer
+        uvs = @view world.uv_all[][rg]                  # UV puffer
+        dt_rel = (world.t[] - src.bas_t)                # relatív idő az indulástól
+        K = ceil(Int, round(dt_rel * world.density, digits = 8)) # aktív sugarak száma TODO: OOB veszélyt kezelni / mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
+        src.act_k = K                                   # aktuális index
+        for i in 1:K                                    # aktív szegmensek frissítése
             radii[i] = r = dt_rel - (i-1) / world.density         # sugár idő az i. impulzushoz
+            uvs[i] = src.uv_alpha_bank[searchsortedlast(src.fade_radius_breaks, r)]
         end
     end
     notify(world.radii_all)
+    notify(world.uv_all)
 end
 
 # Realizáció vizsgálat: kifelé igazítja rcv (receiver, azaz realizáló forrás) RV-jét.
@@ -164,7 +192,7 @@ function apply_wave_hit!(world)
             to_rcv_u, _ = unit_and_mag(to_rcv); isnothing(to_rcv_u) && continue # to_tgt egységvektora TODO: input oldalon tiltani a 0 távolságot és ütköző yaw/pitch kombinációkat
 
             # kiszámítjuk aktuális impulzushoz (p) tartozó forrás (src) RV-jének egységvektorát.
-            emt_rv_dir = emt_k < length(emt.range) ? SVector(world.positions_all[first(emt.range) + emt_k]...) - emt_p : emt.RV_u * (emt.RV_mag / world.density) # src.RV irányvektora TODO: legyen csak simán SVector(world.positions_all[first(emt.range) + emt_k]...) - emt_p, inkább + 1 pozíciót generálni.
+            emt_rv_dir = SVector(world.positions_all[first(emt.range) + emt_k]...) - emt_p # src.RV irányvektora TODO: unit teszttel igazolni, hogy nem fut OOB-ra.
             emt_rv_u, emt_rv_dir_mag = unit_and_mag(emt_rv_dir) # src.RV egységvektora és hossza
 
             # múlttérsűrűség és taszítási vektor számítás
@@ -211,7 +239,9 @@ function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E /
         src.RV_u = src.base_RV_u # irány visszaállítása alapértékre
         src.act_p = src.anch_p   # aktuális pozíció visszaállítása horgonyra
         src.act_k = 0            # aktuális sugárindex nullázása
-        if recompute world.positions_all[src.range] = compute_positions(length(src.range), src, world) end # pályapuffer újragenerálása, ha szükséges
+        if recompute             # pályapuffer újragenerálása, ha szükséges
+            world.positions_all[src.range] = compute_positions(length(src.range), src, world) 
+        end 
     end
 
     t_limit = target_t - step + eps_tol         # utolsó teljes szimulációs lépés felső korlátja
@@ -242,17 +272,20 @@ function apply_spherical_position!(spec, src::Source, world)
     seek_world_time!(world)
 end
 
-# UV‑transzform frissítése a forráson
+# fade arány-határokból konkrét sugár-határok építése
+function rebuild_source_fade_breaks!(src::Source, world)
+    src.fade_radius_breaks = [((length(src.range) - 1) / world.density) * r for r in src.fade_ratio_edges]
+end
+
+# UV‑transzformok és fade lookup újraépítése a forráson
 function apply_source_uv!(sel_col::Int, src::Source, cols::Int, world)
-    src.uv_transform = compute_source_uv(sel_col, cols)           # UV transzform beállítása
-    @views fill!(world.uv_all[][src.range], src.uv_transform)
-    notify(world.uv_all)
+    src.uv_alpha_bank = compute_source_uvs(sel_col, cols, src.fade_ratio_edges) # fade szintek UV bankja
+    update_radii!(world)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
 function apply_source_RR!(new_RR::Float64, src::Source, world, cols::Int, sel_col::Int)
-    src.RR = new_RR                         # RR skálár frissítése
-    apply_source_uv!(sel_col, src, cols, world)     # textúra oszlop frissítése
+    src.RR = new_RR                              # RR skálár frissítése
+    src.uv_alpha_bank = compute_source_uvs(sel_col, cols, src.fade_ratio_edges)  # textúra oszlop frissítése
     seek_world_time!(world)
-    return src
 end
