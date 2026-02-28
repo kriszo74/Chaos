@@ -39,9 +39,9 @@ end
 # Hue kiosztás configból: címkék és index lookup
 const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
 const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
-const FADE_PROFILE_LABELS = String.(CFG["gui"]["FADE_PROFILE_ORDER"])
-const FADE_RATIO_BREAKS_BY_PROFILE = Dict(name => Float64.(CFG["gui"]["FADE_RATIO_BREAKS"][name]) for name in FADE_PROFILE_LABELS)
-const ALPHA_MAX_START_IX = length(ALPHA_VALUES_F32) - maximum(length(v) for v in values(FADE_RATIO_BREAKS_BY_PROFILE)) + 1
+const FADE_RATIO_BREAKS_BY_PROFILE = Dict(name => Float64.(CFG["gui"]["FADE_RATIO_BREAKS"][name]) for name in CFG["gui"]["FADE_PROFILE_ORDER"])
+const ALPHA_MIN_START_IX = maximum(length(v) for v in values(FADE_RATIO_BREAKS_BY_PROFILE))
+const ALPHA_VALUES = Float32.(CFG["gui"]["ALPHA_VALUES"])
 
 preset_specs(preset::String) =
     [(color      = Symbol(e["color"]),  # megjelenítési szín
@@ -70,9 +70,8 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
     for (i, spec) in enumerate(preset_specs(preset))
         cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
-        cur_alpha_ix = Ref(min(findfirst(==(spec.alpha), ALPHA_VALUES_F32), ALPHA_MAX_START_IX))
-        cur_fade_ix = Ref(findfirst(==(spec.fade_profile), FADE_PROFILE_LABELS))
-        fade_breaks() = FADE_RATIO_BREAKS_BY_PROFILE[FADE_PROFILE_LABELS[cur_fade_ix[]]]
+        cur_alpha_ix = Ref(max(findfirst(==(spec.alpha), ALPHA_VALUES), ALPHA_MIN_START_IX))
+        cur_fade_ix = Ref(findfirst(==(spec.fade_profile), CFG["gui"]["FADE_PROFILE_ORDER"]))
         sel_col() = (cur_h_ix[] - 1) * ncols + (cur_rr_offset[] - 1) * length(CFG["gui"]["ALPHA_VALUES"]) + cur_alpha_ix[]
         src = add_source!(world, cols, spec; sel_col=sel_col())
 
@@ -85,22 +84,19 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
                     end)
 
         # alpha row (ALWAYS)
-        mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", ALPHA_VALUES_F32[1:ALPHA_MAX_START_IX];
-                   startvalue = ALPHA_VALUES_F32[cur_alpha_ix[]],
+        mk_slider!(fig, sources_gl, row += 1, "alpha $(i)", ALPHA_VALUES[ALPHA_MIN_START_IX:end];
+                   startvalue = ALPHA_VALUES[cur_alpha_ix[]],
                    onchange = v -> begin
-                       cur_alpha_ix[] = findfirst(==(v), ALPHA_VALUES_F32[1:ALPHA_MAX_START_IX])
-                       @info "cur_alpha_ix: $cur_alpha_ix"
+                       cur_alpha_ix[] = max(findfirst(==(v), ALPHA_VALUES), ALPHA_MIN_START_IX)
                        apply_source_uv!(sel_col(), src, cols, world)
                    end)
 
         # alpha halványulási profil (DISCRETE)
-        mk_menu!(fig, sources_gl, row += 1, "fade $(i)", FADE_PROFILE_LABELS;
+        mk_menu!(fig, sources_gl, row += 1, "fade $(i)", CFG["gui"]["FADE_PROFILE_ORDER"];
                     selected_index = cur_fade_ix[],
                     onchange = sel -> begin
-                        cur_fade_ix[] = findfirst(==(sel), FADE_PROFILE_LABELS)
-                        src.fade_ratio_edges = fade_breaks()
-                        rebuild_source_fade_breaks!(src, world)
-                        update_radii!(world)
+                        cur_fade_ix[] = findfirst(==(sel), CFG["gui"]["FADE_PROFILE_ORDER"])
+                        apply_source_uv!(sel_col(), src, cols, world; fade_breaks = FADE_RATIO_BREAKS_BY_PROFILE[CFG["gui"]["FADE_PROFILE_ORDER"][cur_fade_ix[]]])
                     end)
 
         # RV (skálár) – LIVE recompute

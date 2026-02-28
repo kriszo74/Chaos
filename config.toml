@@ -6,6 +6,7 @@ GUI_COL_W = 240
 RR_MAX = 2.0
 RR_STEP = 0.1
 ALPHA_VALUES = [0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+FADE_PROFILE_ORDER = ["off", "soft", "normal", "deep", "xray"]
 DENSITY_VALUES = [1.0, 2.0, 5.0]
 REF_NONE = 0
 
@@ -22,6 +23,13 @@ blue = 240
 indigo = 270
 magenta = 300
 deeppink = 330
+
+[gui.FADE_RATIO_BREAKS] #TODO: 0.0 elhagyható, de ahhoz a kódot át kell írni picit.
+off    = [0.0]
+soft   = [0.0, 0.2, 0.45, 0.75, 0.9]
+normal = [0.0, 0.1, 0.33, 0.66, 0.9]
+deep   = [0.0, 0.05, 0.2, 0.5, 0.9]
+xray   = [0.0, 0.02, 0.1, 0.3, 0.9]
 
 [world]
 E = 3.0
@@ -46,6 +54,7 @@ yaw_deg = 0.0
 pitch_deg = 0.0
 rv_yaw_deg = 0.0
 rv_pitch_deg = 0.0
+fade = "normal"
 
 [[presets.table]]
 name = "Téridő kísérletek..."
@@ -61,6 +70,7 @@ yaw_deg = 0.0
 pitch_deg = 0.0
 rv_yaw_deg = 0.0
 rv_pitch_deg = 0.0
+fade = "normal"
 
 [[presets.table.entries]]
 color = "magenta"
@@ -73,3 +83,4 @@ yaw_deg = 5.0
 pitch_deg = 75.0
 rv_yaw_deg = 0.0
 rv_pitch_deg = -90.0
+fade = "normal"

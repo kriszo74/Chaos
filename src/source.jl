@@ -5,8 +5,6 @@
 
 const SOURCE_UV_T = typeof(Makie.uv_transform((Vec2f(0f0, 0f0), Vec2f(1f0, 0f0))))
 const SOURCE_UV_ID = Makie.uv_transform((Vec2f(0f0, 0.5f0), Vec2f(1f0, 0f0)))
-const ALPHA_VALUES_F32 = Float32.(CFG["gui"]["ALPHA_VALUES"])
-const ALPHA_VALUES_COUNT = length(ALPHA_VALUES_F32)
 
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
@@ -23,7 +21,6 @@ mutable struct Source
     uv_alpha_bank::Vector{SOURCE_UV_T} # UV bank a fade szintekhez
     fade_ratio_edges::Vector{Float64}  # fade arány-határok
     fade_radius_breaks::Vector{Float64}# konkrét sugár-határok
-    max_fade_ix::Int
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
@@ -42,8 +39,7 @@ function add_source!(world, cols::Int, spec; sel_col::Int)
         uv_alpha_bank[1],                       # UV‑atlasz oszlop kiválasztása
         uv_alpha_bank,                          # UV alpha bank
         Float64.(spec.fade_ratio_edges),        # fade arány-határok
-        Float64[],                              # konkrét sugár-határok
-        1)
+        Float64[])                              # konkrét sugár-határok
 
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
@@ -123,40 +119,30 @@ end
 # UV bank készítése a kiválasztott oszlopból, egymást követő alpha oszlopokkal
 function compute_source_uvs(sel_col::Int, cols::Int, fade_ratio_edges)
     sx = 1f0 / Float32(cols)                                        # oszlopszélesség
-
-    # DEBUG kód
-    # uvs = Vector{SOURCE_UV_T}(undef, length(fade_ratio_edges))
-    # for i in eachindex(fade_ratio_edges)
-    #     #uv = Makie.uv_transform((Vec2f(0f0, (sel_col - length(fade_ratio_edges) + i - 1) / cols + sx / 2), Vec2f(1f0, 0f0)))
-    #     uv = Makie.uv_transform((Vec2f(0f0, (sel_col - i + 1) / cols + sx / 2), Vec2f(1f0, 0f0)))
-    #     uvs[i] = uv
-    # end
-    # if length(uvs) > 1
-    #     @info "sel_col: $sel_col, uvs: $(uvs[1][8]), $(uvs[2][8]) ,$(uvs[3][8]), $(uvs[4][8]), $(uvs[5][8])"
-    # else 
-    #     @info "sel_col: $sel_col, uvs: $(uvs[1])"
-    # end
-    #return uvs
-    return [Makie.uv_transform((Vec2f(0f0, (sel_col - i + 1) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
+    return [Makie.uv_transform((Vec2f(0f0, (sel_col - i) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
 end
 
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
 # TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
-    @inbounds for src in world.sources # források bejárása
-        rg = src.range                                  # forrás tartomány
-        radii = @view world.radii_all[][rg]             # sugárpuffer
-        uvs = @view world.uv_all[][rg]                  # UV puffer
+    @inbounds for src in world.sources                  # források bejárása
+        radii = @view world.radii_all[][src.range]      # sugárpuffer nézet
+        uvs = @view world.uv_all[][src.range]           # UV puffer nézet
         dt_rel = (world.t[] - src.bas_t)                # relatív idő az indulástól
         K = ceil(Int, round(dt_rel * world.density, digits = 8)) # aktív sugarak száma TODO: OOB veszélyt kezelni / mérésekkel igazolni, hogy ez gyorsabb és megfontolni a haszálatát: K = min(ceil(Int, dt_rel * world.density), length(radii))
-        src.act_k = K                                   # aktuális index
-        for i in 1:K                                    # aktív szegmensek frissítése
-            radii[i] = r = dt_rel - (i-1) / world.density         # sugár idő az i. impulzushoz
-            uvs[i] = src.uv_alpha_bank[searchsortedlast(src.fade_radius_breaks, r)]
-        end
-    end
-    notify(world.radii_all)
-    notify(world.uv_all)
+        src.act_k = K                                   # aktuális sugárindex
+
+        breaks = src.fade_radius_breaks                 # lokális változóba: fade sugárhatárok
+        bank   = src.uv_alpha_bank                      # lokális változóba: UV bank
+        fade_ix = searchsortedlast(breaks, dt_rel)      # kezdő fade index
+        for i in 1:K                                    # aktív sugarak és UV-k frissítése
+            radii[i] = r = dt_rel - (i - 1) / world.density # i. sugár növelése
+            r < breaks[fade_ix] && (fade_ix -= 1)       # fade index visszaléptetése
+            uvs[i] = bank[fade_ix]                      # UV kiválasztása index alapján
+        end                                                              
+    end                                                                  
+    notify(world.radii_all)                             # sugárpuffer frissítés jelzése
+    notify(world.uv_all)                                # UV puffer frissítés jelzése
 end
 
 # Realizáció vizsgálat: kifelé igazítja rcv (receiver, azaz realizáló forrás) RV-jét.
@@ -278,7 +264,11 @@ function rebuild_source_fade_breaks!(src::Source, world)
 end
 
 # UV‑transzformok és fade lookup újraépítése a forráson
-function apply_source_uv!(sel_col::Int, src::Source, cols::Int, world)
+function apply_source_uv!(sel_col::Int, src::Source, cols::Int, world; fade_breaks = nothing)
+    if !isnothing(fade_breaks) 
+        src.fade_ratio_edges = fade_breaks
+        rebuild_source_fade_breaks!(src, world)
+    end
     src.uv_alpha_bank = compute_source_uvs(sel_col, cols, src.fade_ratio_edges) # fade szintek UV bankja
     update_radii!(world)
 end
