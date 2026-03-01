@@ -6,7 +6,7 @@ module Chaos
     using GeometryBasics
     using Colors
     using Observables  # Observable támogatás
-    using Infiltrator
+    #using Infiltrator
     
     # rendszer-paraméterek
     const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
@@ -63,8 +63,7 @@ module Chaos
     end
 
     function julia_main()::Cint
-        #TODO: nyomozni:  build kozben lefut a GUI, es a Makie font‑ot probal betolteni. A font fajl nem talalhato, ezert a build elhasal.
-        ccall(:jl_generating_output, Cint, ()) != 0 && return 0
+        ccall(:jl_generating_output, Cint, ()) != 0 && return 0 # build esetén megszkítjuk a kód futását.
         @info "DEBUG_MODE = $DEBUG_MODE"
 
         rt = Runtime(Observable{Union{Nothing,Task}}(nothing), Observable(false), Base.Event())
