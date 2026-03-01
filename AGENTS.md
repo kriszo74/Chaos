@@ -26,6 +26,7 @@ E) Kommitolási szabályok:
 - Csak a kért fájlokat stage-eld.
 - Egy változás = egy kommit, ha logikailag független.
 - Kommit üzenet egyeztetése kötelező.
+- Kommit üzenet: technikai pontok, a végén 1 mondat felhasználói változás.
 
 2 KÓDOLÁSI SZABÁLYOK, PARANCSOK
 
