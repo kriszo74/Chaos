@@ -10,5 +10,5 @@ create_app(
     force = true,
     incremental = true,
     include_transitive_dependencies = false,
-    sysimage_build_args = `--strip-metadata --strip-ir`,
+    sysimage_build_args = `--strip-metadata`,
 )
