@@ -137,8 +137,10 @@ function update_radii!(world)
         fade_ix = searchsortedlast(breaks, dt_rel)      # kezdő fade index
         for i in 1:K                                    # aktív sugarak és UV-k frissítése
             radii[i] = r = dt_rel - (i - 1) / world.density # i. sugár növelése
-            r < breaks[fade_ix] && (fade_ix -= 1)       # fade index visszaléptetése
+            while r < breaks[fade_ix]; fade_ix -= 1; end# fade index visszaléptetése
+            #r < breaks[fade_ix] && (fade_ix -= 1)       
             uvs[i] = bank[fade_ix]                      # UV kiválasztása index alapján
+            #@infiltrate world.t[] > 19.5 && i == K
         end                                                              
     end                                                                  
     notify(world.radii_all)                             # sugárpuffer frissítés jelzése
