@@ -34,7 +34,7 @@ module Chaos
         sources::Vector{Source}
         positions_all::Vector{Point3d}
         radii_all::Observable{Vector{Float64}}
-        uv_all::Observable{Vector{SOURCE_UV_T}}
+        uv_all::Observable{Vector{SMatrix{3, 3, Float32}}}
         plot::Any
 
         # futás-optimalizációs változók:
@@ -77,7 +77,7 @@ module Chaos
             Source[],
             Point3d[],
             Observable(Float64[]),
-            Observable(SOURCE_UV_T[]),
+            Observable(SMatrix{3, 3, Float32}[]),
             nothing,
             1)
 

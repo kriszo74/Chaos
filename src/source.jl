@@ -3,9 +3,6 @@
 # Spherical pozicionálás (distance/yaw/pitch) és compute_dir alapú irányszámítás.
 #TODO: a függvények szignatúrájának felülvizsgálása, legyen egy logikus sorrend.
 
-const SOURCE_UV_T = typeof(Makie.uv_transform((Vec2f(0f0, 0f0), Vec2f(1f0, 0f0))))
-const SOURCE_UV_ID = Makie.uv_transform((Vec2f(0f0, 0.5f0), Vec2f(1f0, 0f0)))
-
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
@@ -17,10 +14,10 @@ mutable struct Source
     bas_t::Float64               # indulási idő
     anch_p::SVector{3, Float64}  # pálya horgony pozíciója
     range::UnitRange{Int}        # közös puffer index-tartomány
-    uv_transform::SOURCE_UV_T    # UV transzform
-    uv_alpha_bank::Vector{SOURCE_UV_T} # UV bank a fade szintekhez
-    fade_ratio_edges::Vector{Float64}  # fade arány-határok
-    fade_radius_breaks::Vector{Float64}# konkrét sugár-határok
+    uv_transform::SMatrix{3, 3, Float32}          # UV transzform
+    uv_alpha_bank::Vector{SMatrix{3, 3, Float32}} # UV bank a fade szintekhez
+    fade_ratio_edges::Vector{Float64}             # fade arány-határok
+    fade_radius_breaks::Vector{Float64}           # konkrét sugár-határok
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
@@ -77,34 +74,27 @@ function step_world!(world; step = world.E / 60)
     world.plot[:positions][] = world.positions_all
 end
 
-# Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
-const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
-const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
-function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
-    u = ref_src.base_RV_u                      # ref RV irányegység
-    refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ # fallback, ha közel párhuzamos
-    e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
-    e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
-    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # e3 = u × e2
-    sy, cy = sincos(yaw)                       # yaw szinusz és koszinusz
-    sp, cp = sincos(pitch)                     # pitch szinusz és koszinusz
-    dir = cp*cy*e2 + cp*sy*e3 + sp*u           # irány komponensek
-    return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
-end
+# t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
+function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60, recompute = true)
+    for src in world.sources
+        src.RV_u = src.base_RV_u # irány visszaállítása alapértékre
+        src.act_p = src.anch_p   # aktuális pozíció visszaállítása horgonyra
+        src.act_k = 0            # aktuális sugárindex nullázása
+        if recompute             # pályapuffer újragenerálása, ha szükséges
+            world.positions_all[src.range] = compute_positions(length(src.range), src, world) 
+        end 
+    end
 
-# Pozíciók újragenerálása adott N alapján
-# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
-function compute_positions(N::Int, src::Source, world)
-    dp = src.RV_u * src.RV_mag / world.density                       # két impulzus közti pozíciólépés
-    return [Point3d((src.anch_p + dp * k)...) for k in 0:N-1]        # pálya N ponttal
-end
+    t_limit = target_t - step + eps_tol         # utolsó teljes szimulációs lépés felső korlátja
+    fill!(world.radii_all[], 0.0)               # sugárpuffer teljes nullázása
+    t_limit <= 0.0 && notify(world.radii_all)   # sugárpuffer változásának jelzése
 
-# közös forráspufferek alapállapotba visszaállítása
-function clear_sources_buffers!(world)
-    empty!(world.positions_all)     # pozíciópuffer ürítése
-    world.radii_all[] = Float64[]   # sugárpuffer ürítése
-    world.uv_all[] = SOURCE_UV_T[]  # UV puffer ürítése
-    world.next_start_ix = 1         # indexszámláló visszaállítása
+    world.t[] = 0.0
+    while world.t[] < t_limit
+        world.t[] += step
+        step_world!(world; step)    # világállapot léptetése és kirajzolása
+    end
+    world.t[] = target_t
 end
 
 # Pufferhosszak frissítése density/max_t változásnál
@@ -116,10 +106,12 @@ function update_sampling!(world)
     seek_world_time!(world, recompute = false)
 end
 
-# UV bank készítése a kiválasztott oszlopból, egymást követő alpha oszlopokkal
-function compute_source_uvs(sel_col::Int, cols::Int, fade_ratio_edges)
-    sx = 1f0 / Float32(cols)                                        # oszlopszélesség
-    return [Makie.uv_transform((Vec2f(0f0, (sel_col - i) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
+# közös forráspufferek alapállapotba visszaállítása
+function clear_sources_buffers!(world)
+    empty!(world.positions_all)     # pozíciópuffer ürítése
+    world.radii_all[] = Float64[]   # sugárpuffer ürítése
+    world.uv_all[] = SMatrix{3, 3, Float32}[]  # UV puffer ürítése
+    world.next_start_ix = 1         # indexszámláló visszaállítása
 end
 
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
@@ -138,9 +130,7 @@ function update_radii!(world)
         for i in 1:K                                    # aktív sugarak és UV-k frissítése
             radii[i] = r = dt_rel - (i - 1) / world.density # i. sugár növelése
             while r < breaks[fade_ix]; fade_ix -= 1; end# fade index visszaléptetése
-            #r < breaks[fade_ix] && (fade_ix -= 1)       
             uvs[i] = bank[fade_ix]                      # UV kiválasztása index alapján
-            #@infiltrate world.t[] > 19.5 && i == K
         end                                                              
     end                                                                  
     notify(world.radii_all)                             # sugárpuffer frissítés jelzése
@@ -205,6 +195,28 @@ function apply_wave_hit!(world)
     end
 end
 
+# Pozíciók újragenerálása adott N alapján
+# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
+function compute_positions(N::Int, src::Source, world)
+    dp = src.RV_u * src.RV_mag / world.density                       # két impulzus közti pozíciólépés
+    return [Point3d((src.anch_p + dp * k)...) for k in 0:N-1]        # pálya N ponttal
+end
+
+# Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
+const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
+const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
+function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
+    u = ref_src.base_RV_u                      # ref RV irányegység
+    refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ # fallback, ha közel párhuzamos
+    e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
+    e2  = e2p / sqrt(sum(abs2, e2p))           # normalizált e2
+    e3  = SVector(u[2]*e2[3]-u[3]*e2[2], u[3]*e2[1]-u[1]*e2[3], u[1]*e2[2]-u[2]*e2[1]) # e3 = u × e2
+    sy, cy = sincos(yaw)                       # yaw szinusz és koszinusz
+    sp, cp = sincos(pitch)                     # pitch szinusz és koszinusz
+    dir = cp*cy*e2 + cp*sy*e3 + sp*u           # irány komponensek
+    return dir / sqrt(sum(abs2, dir))          # egységvektor visszaadása
+end
+
 # Referencia irány (yaw/pitch) alapján horgony beállítása
 function update_spherical_position!(spec, src::Source, ref_src::Source)
     ref_pos = ref_src.anch_p                        # referencia horgony pozíciója (SVector)
@@ -214,6 +226,11 @@ function update_spherical_position!(spec, src::Source, ref_src::Source)
     src.act_k = 0                                   # aktuális index reset
 end
 
+function apply_spherical_position!(spec, src::Source, world)
+    update_spherical_position!(spec, src, world.sources[spec.ref])
+    seek_world_time!(world)
+end
+
 # RV irány beállítása; pozíció nem változik
 function update_RV_direction!(spec, src::Source, ref_src::Source)
     dir = compute_dir(ref_src, spec.rv_yaw, spec.rv_pitch) # új irány számítása yaw/pitch alapján
@@ -221,27 +238,9 @@ function update_RV_direction!(spec, src::Source, ref_src::Source)
     src.RV_u = src.base_RV_u
 end
 
-# t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
-function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60, recompute = true)
-    for src in world.sources
-        src.RV_u = src.base_RV_u # irány visszaállítása alapértékre
-        src.act_p = src.anch_p   # aktuális pozíció visszaállítása horgonyra
-        src.act_k = 0            # aktuális sugárindex nullázása
-        if recompute             # pályapuffer újragenerálása, ha szükséges
-            world.positions_all[src.range] = compute_positions(length(src.range), src, world) 
-        end 
-    end
-
-    t_limit = target_t - step + eps_tol         # utolsó teljes szimulációs lépés felső korlátja
-    fill!(world.radii_all[], 0.0)               # sugárpuffer teljes nullázása
-    t_limit <= 0.0 && notify(world.radii_all)   # sugárpuffer változásának jelzése
-
-    world.t[] = 0.0
-    while world.t[] < t_limit
-        world.t[] += step
-        step_world!(world; step)    # világállapot léptetése és kirajzolása
-    end
-    world.t[] = target_t
+function apply_RV_direction!(spec, src::Source, world)
+    update_RV_direction!(spec, src, world.sources[spec.ref])
+    seek_world_time!(world)
 end
 
 # RV skálázása; irány megtartása
@@ -250,19 +249,15 @@ function apply_RV_rescale!(RV::Float64, src::Source, world)
     seek_world_time!(world)
 end
 
-function apply_RV_direction!(spec, src::Source, world)
-    update_RV_direction!(spec, src, world.sources[spec.ref])
-    seek_world_time!(world)
-end
-
-function apply_spherical_position!(spec, src::Source, world)
-    update_spherical_position!(spec, src, world.sources[spec.ref])
-    seek_world_time!(world)
-end
-
 # fade arány-határokból konkrét sugár-határok építése
 function rebuild_source_fade_breaks!(src::Source, world)
     src.fade_radius_breaks = [((length(src.range) - 1) / world.density) * r for r in src.fade_ratio_edges]
+end
+
+# UV bank készítése a kiválasztott oszlopból, egymást követő alpha oszlopokkal
+function compute_source_uvs(sel_col::Int, cols::Int, fade_ratio_edges)
+    sx = 1f0 / Float32(cols)                                        # oszlopszélesség
+    return [Makie.uv_transform((Vec2f(0f0, (sel_col - i) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
 end
 
 # UV‑transzformok és fade lookup újraépítése a forráson
