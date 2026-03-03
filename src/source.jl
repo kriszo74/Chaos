@@ -62,7 +62,6 @@ function build_source!(src, world)
 end
 
 # Sugarak frissítése a world.t alapján
-# TODO: CUDA.jl: radii batch futtatása GPU-n (több forrás, szegmensek)
 function step_world!(world; step = world.E / 60)
     update_radii!(world)  # sugárpuffer frissítése
     apply_wave_hit!(world)
@@ -114,7 +113,6 @@ function clear_sources_buffers!(world)
 end
 
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
-# TODO: CUDA.jl: CuArray + egykernelű frissítés nagy N esetén
 function update_radii!(world)
     @inbounds for src in world.sources                  # források bejárása
         radii = @view world.radii_all[][src.range]      # sugárpuffer nézet
@@ -195,7 +193,6 @@ function apply_wave_hit!(world)
 end
 
 # Pozíciók újragenerálása adott N alapján
-# TODO: CUDA.jl: pályapontok generálása GPU-n; visszamásolás minimalizálása
 function compute_positions(N::Int, src::Source, world)
     dp = src.RV_u * src.RV_mag / world.density                       # két impulzus közti pozíciólépés
     return [Point3d((src.anch_p + dp * k)...) for k in 0:N-1]        # pálya N ponttal

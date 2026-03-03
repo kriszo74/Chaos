@@ -51,7 +51,7 @@ module Chaos
             while rt.paused[]; wait(rt.pause_ev); end
             tprev = time_ns()/1e9
             world.t[] += step = world.E * dt
-            world.t[] > world.max_t + eps_tol && break #TODO: t_limit = world.max_t + eps_tol -t betenni max_t állításhoz (word-be vagy rt-be), hogy ne kelljen újra és újra számolni itt.
+            world.t[] > world.max_t + eps_tol && break
             step_world!(world; step)
             frame_used = (time_ns()/1e9) - tprev
             rem = target - frame_used
