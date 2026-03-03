@@ -1,7 +1,6 @@
 # Forrás entitás és alap műveletek: pozíció, RV/irány, megjelenítés.
 # GUI‑független, KISS utilok és állapotkezelés (regen+plot, UV).
 # Spherical pozicionálás (distance/yaw/pitch) és compute_dir alapú irányszámítás.
-#TODO: a függvények szignatúrájának felülvizsgálása, legyen egy logikus sorrend.
 
 # Source: mozgás és megjelenítési adatok
 mutable struct Source
@@ -21,8 +20,8 @@ mutable struct Source
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-function add_source!(world, cols::Int, spec; sel_col::Int)
-    uv_alpha_bank = compute_source_uvs(sel_col, cols, spec.fade_ratio_edges)
+function add_source!(sel_col::Int, cols::Int, spec, world)
+    uv_alpha_bank = compute_source_uvs(spec.fade_ratio_edges, sel_col, cols)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
@@ -40,17 +39,17 @@ function add_source!(world, cols::Int, spec; sel_col::Int)
 
     if spec.ref !== nothing
         ref_src = world.sources[spec.ref]
-        update_spherical_position!(spec, src, ref_src)
-        update_RV_direction!(spec, src, ref_src)
+        update_spherical_position!(spec, ref_src, src)
+        update_RV_direction!(spec, ref_src, src)
     end
 
-    build_source!(world, src)                    # forrás puffereinek felépítése
+    build_source!(src, world)                    # forrás puffereinek felépítése
     push!(world.sources, src)                    # forrás regisztrálása a listában
     return src
 end
 
 # közös pufferek bővítése és forrás tartományának kiosztása
-function build_source!(world, src)
+function build_source!(src, world)
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) + 1 # pozíciók/sugarak előkészítése
     start_ix = world.next_start_ix                           # közös puffer kezdő index
     world.next_start_ix = start_ix + N                       # következő forrás kezdő indexe
@@ -75,7 +74,7 @@ function step_world!(world; step = world.E / 60)
 end
 
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
-function seek_world_time!(world, target_t::Float64 = world.t[]; step = world.E / 60, recompute = true)
+function seek_world_time!(world; target_t::Float64 = world.t[], step = world.E / 60, recompute = true)
     for src in world.sources
         src.RV_u = src.base_RV_u # irány visszaállítása alapértékre
         src.act_p = src.anch_p   # aktuális pozíció visszaállítása horgonyra
@@ -101,7 +100,7 @@ end
 function update_sampling!(world)
     clear_sources_buffers!(world)   # pufferek újraépítés előtti nullázása
     for src in world.sources
-        build_source!(world, src)       # új mintavételezésű puffer-szelet építése
+        build_source!(src, world)       # új mintavételezésű puffer-szelet építése
     end
     seek_world_time!(world, recompute = false)
 end
@@ -205,7 +204,7 @@ end
 # Irányvektor a ref RV tengelyéhez mérve (yaw/pitch)
 const REFZ = SVector(0.0, 0.0, 1.0) # stabil referencia vektor
 const REFY = SVector(0.0, 1.0, 0.0) # stabil referencia vektor
-function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
+function compute_dir(yaw::Float64, pitch::Float64, ref_src::Source)
     u = ref_src.base_RV_u                      # ref RV irányegység
     refv = abs(sum(REFZ .* u)) > 0.97 ? REFY : REFZ # fallback, ha közel párhuzamos
     e2p = refv - (sum(refv .* u)) * u          # u-ra merőleges komponens
@@ -218,28 +217,28 @@ function compute_dir(ref_src::Source, yaw::Float64, pitch::Float64)
 end
 
 # Referencia irány (yaw/pitch) alapján horgony beállítása
-function update_spherical_position!(spec, src::Source, ref_src::Source)
+function update_spherical_position!(spec, ref_src::Source, src::Source)
     ref_pos = ref_src.anch_p                        # referencia horgony pozíciója (SVector)
-    dir = compute_dir(ref_src, spec.yaw, spec.pitch)# ref RV-hez mért irány (yaw/pitch)
+    dir = compute_dir(spec.yaw, spec.pitch, ref_src)# ref RV-hez mért irány (yaw/pitch)
     src.act_p = ref_pos + spec.distance * dir       # új horgony pozíció távolság és irány szerint
     src.anch_p = src.act_p                          # horgony frissítése
     src.act_k = 0                                   # aktuális index reset
 end
 
 function apply_spherical_position!(spec, src::Source, world)
-    update_spherical_position!(spec, src, world.sources[spec.ref])
+    update_spherical_position!(spec, world.sources[spec.ref], src)
     seek_world_time!(world)
 end
 
 # RV irány beállítása; pozíció nem változik
-function update_RV_direction!(spec, src::Source, ref_src::Source)
-    dir = compute_dir(ref_src, spec.rv_yaw, spec.rv_pitch) # új irány számítása yaw/pitch alapján
+function update_RV_direction!(spec, ref_src::Source, src::Source)
+    dir = compute_dir(spec.rv_yaw, spec.rv_pitch, ref_src) # új irány számítása yaw/pitch alapján
     src.base_RV_u = dir                             # irány frissítése; horgony változatlan
     src.RV_u = src.base_RV_u
 end
 
 function apply_RV_direction!(spec, src::Source, world)
-    update_RV_direction!(spec, src, world.sources[spec.ref])
+    update_RV_direction!(spec, world.sources[spec.ref], src)
     seek_world_time!(world)
 end
 
@@ -255,24 +254,24 @@ function rebuild_source_fade_breaks!(src::Source, world)
 end
 
 # UV bank készítése a kiválasztott oszlopból, egymást követő alpha oszlopokkal
-function compute_source_uvs(sel_col::Int, cols::Int, fade_ratio_edges)
+function compute_source_uvs(fade_ratio_edges, sel_col::Int, cols::Int)
     sx = 1f0 / Float32(cols)                                        # oszlopszélesség
     return [Makie.uv_transform((Vec2f(0f0, (sel_col - i) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
 end
 
 # UV‑transzformok és fade lookup újraépítése a forráson
-function apply_source_uv!(sel_col::Int, src::Source, cols::Int, world; fade_breaks = nothing)
+function apply_source_uv!(sel_col::Int, cols::Int, src::Source, world; fade_breaks = nothing)
     if !isnothing(fade_breaks) 
         src.fade_ratio_edges = fade_breaks
         rebuild_source_fade_breaks!(src, world)
     end
-    src.uv_alpha_bank = compute_source_uvs(sel_col, cols, src.fade_ratio_edges) # fade szintek UV bankja
+    src.uv_alpha_bank = compute_source_uvs(src.fade_ratio_edges, sel_col, cols) # fade szintek UV bankja
     update_radii!(world)
 end
 
 # RR skálár frissítése és 1×3 textúra beállítása (piros–szürke–kék)
-function apply_source_RR!(new_RR::Float64, src::Source, world, cols::Int, sel_col::Int)
+function apply_source_RR!(new_RR::Float64, sel_col::Int, cols::Int, src::Source, world)
     src.RR = new_RR                              # RR skálár frissítése
-    src.uv_alpha_bank = compute_source_uvs(sel_col, cols, src.fade_ratio_edges)  # textúra oszlop frissítése
+    src.uv_alpha_bank = compute_source_uvs(src.fade_ratio_edges, sel_col, cols)  # textúra oszlop frissítése
     seek_world_time!(world)
 end

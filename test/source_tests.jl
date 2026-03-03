@@ -43,7 +43,7 @@ end
 
 function add_source_for_test!(world; kwargs...)
     src = mk_source(; kwargs...)
-    Chaos.build_source!(world, src)
+    Chaos.build_source!(src, world)
     push!(world.sources, src)
     return src
 end
@@ -84,7 +84,7 @@ end
 @testset "build_source! index invariansok" begin
     world = mk_world(density = 2.0, max_t = 3.0)
     src = mk_source(bas_t = 0.25, RV_mag = 2.0)
-    Chaos.build_source!(world, src)
+    Chaos.build_source!(src, world)
 
     N = Int(ceil((world.max_t - src.bas_t) * world.density)) + 1
     @test length(src.range) == N

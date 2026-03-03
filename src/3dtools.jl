@@ -1,5 +1,5 @@
 # Gömbfelület generálása (lat–long rács, előallokálva)
-function create_detailed_sphere_fast(center::Point3f, r::Float32, res::Int=48)
+function create_detailed_sphere(center::Point3f, r::Float32; res::Int = 48)
     @assert res ≥ 8 "res should be ≥ 8 for smooth markers"
     nlats = res
     nlons = 2*res
@@ -65,7 +65,7 @@ end
 
 # Jelenet (Scene) létrehozása – ortografikus kamera
 function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
-    GLMakie.activate!(; focus_on_show=true, title="Chaos")
+    GLMakie.activate!(; focus_on_show = true, title = "Chaos")
     fig = Figure(sizeof = (600, 450), backgroundcolor = backgroundcolor, figure_padding = 0)
     scene = LScene(fig[1, 1], show_axis = false)
     cam3d!(scene; projectiontype = :orthographic,
@@ -76,7 +76,7 @@ function setup_scene(; backgroundcolor = RGBf(0.302, 0.322, 0.471))
 end
 
 # Atlasz 12 közép-hue-hoz; oszlopok r∈[0,1] (parts+1), sorok: neg/mid/pos.
-function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32; s::Float32=1f0, v::Float32=1f0, alphas::Vector{Float32}=Float32[1f0]) 
+function rr_texture_from_hue(RR_MAX::Float32, RR_STEP::Float32, alphas::Vector{Float32}; s::Float32 = 1f0, v::Float32 = 1f0)
     ncols = Int(floor(RR_MAX / RR_STEP)) + 1                       # RR oszlopszám (RR_MAX/RR_STEP + 1)
     rvals = collect(LinRange(0f0, 1f0, ncols))                     # RR lépcsők 0..1 normálva
     hs    = Float32.(0:30:330)                                     # 12 közép-hue 0..330 fok

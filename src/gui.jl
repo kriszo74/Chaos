@@ -3,7 +3,7 @@
 # A panel újraépítés és a futásvezérlés (play/pause, seek) központi belépési pontjai itt vannak.
 
 # mk_menu!: label + legördülő + onchange callback
-function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected_index=nothing)
+function mk_menu!(fig, grid, row, label_txt, options; selected_index = nothing, onchange = nothing)
     grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
     grid[row, 2:3] = menu = Menu(fig, options = options)
     isnothing(selected_index) || (menu.i_selected[] = selected_index::Int)
@@ -12,9 +12,9 @@ function mk_menu!(fig, grid, row, label_txt, options; onchange=nothing, selected
 end
 
 # mk_slider!: label + slider + value label egy sorban
-function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, onchange::Union{Nothing,Function}=nothing, target=nothing, attr::Union{Nothing,Symbol}=nothing, transform = Float32)
-    s   = Slider(fig, range=range, startvalue=startvalue)
-    grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false) # 
+function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits = 2, target = nothing, attr::Union{Nothing,Symbol} = nothing, transform = Float32, onchange::Union{Nothing,Function} = nothing)
+    s = Slider(fig, range=range, startvalue=startvalue)
+    grid[row, 1] = Label(fig, label_txt; color = :white, halign = :right, tellwidth = false)
     grid[row, 2] = s
     grid[row, 3] = Label(fig, lift(x -> string(round(x, digits=fmtdigits)), s.value);
                          color = :white, halign = :right, tellwidth = false)
@@ -30,7 +30,7 @@ function mk_slider!(fig, grid, row, label_txt, range; startvalue, fmtdigits=2, o
 end
 
 # mk_button!: gomb + elhelyezés + opcionális onclick
-function mk_button!(fig, grid, row, label; colspan=3, onclick=nothing)
+function mk_button!(fig, grid, row, label; colspan = 3, onclick = nothing)
     grid[row, 1:colspan] = btn = Button(fig, label = label)
     isnothing(onclick) || on(btn.clicks) do _; onclick(btn); end
     return btn
@@ -58,7 +58,7 @@ preset_specs(preset::String) =
       fade_ratio_edges = FADE_RATIO_BREAKS_BY_PROFILE[get(e, "fade", "off")]) for e in find_entries_by_name(CFG["presets"]["table"], preset)]
 
 # Forráspanelek újraépítése és jelenet megtisztítása
-function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::World, rt::Runtime; preset = first(CFG["presets"]["order"]))
+function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sources_gl, rt::Runtime, world::World)
     rt.paused[] = true            # rebuild közben álljunk meg
     foreach(delete!, contents(sources_gl))  # forráspanel elemeinek törlése
     trim!(sources_gl)        # üres sor/oszlop levágása
@@ -73,14 +73,14 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
         cur_alpha_ix = Ref(max(findfirst(==(spec.alpha), ALPHA_VALUES), ALPHA_MIN_START_IX))
         cur_fade_ix = Ref(findfirst(==(spec.fade_profile), CFG["gui"]["FADE_PROFILE_ORDER"]))
         sel_col() = (cur_h_ix[] - 1) * ncols + (cur_rr_offset[] - 1) * length(CFG["gui"]["ALPHA_VALUES"]) + cur_alpha_ix[]
-        src = add_source!(world, cols, spec; sel_col=sel_col())
+        src = add_source!(sel_col(), cols, spec, world)
 
         # hue row (DISCRETE 0..330° step 30°)
         mk_menu!(fig, sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        apply_source_uv!(sel_col(), src, cols, world)
+                        apply_source_uv!(sel_col(), cols, src, world)
                     end)
 
         # alpha row (ALWAYS)
@@ -88,7 +88,7 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
                    startvalue = ALPHA_VALUES[cur_alpha_ix[]],
                    onchange = v -> begin
                        cur_alpha_ix[] = max(findfirst(==(v), ALPHA_VALUES), ALPHA_MIN_START_IX)
-                       apply_source_uv!(sel_col(), src, cols, world)
+                       apply_source_uv!(sel_col(), cols, src, world)
                    end)
 
         # alpha halványulási profil (DISCRETE)
@@ -96,7 +96,7 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
                     selected_index = cur_fade_ix[],
                     onchange = sel -> begin
                         cur_fade_ix[] = findfirst(==(sel), CFG["gui"]["FADE_PROFILE_ORDER"])
-                        apply_source_uv!(sel_col(), src, cols, world; fade_breaks = FADE_RATIO_BREAKS_BY_PROFILE[CFG["gui"]["FADE_PROFILE_ORDER"][cur_fade_ix[]]])
+                        apply_source_uv!(sel_col(), cols, src, world; fade_breaks = FADE_RATIO_BREAKS_BY_PROFILE[CFG["gui"]["FADE_PROFILE_ORDER"][cur_fade_ix[]]])
                     end)
 
         # RV (skálár) – LIVE recompute
@@ -109,7 +109,7 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
                     startvalue = spec.RR,
                     onchange = v -> begin
                         cur_rr_offset[] = 1 + round(Int, v / CFG["gui"]["RR_STEP"])
-                        apply_source_RR!(v, src, world, cols, sel_col())
+                        apply_source_RR!(v, sel_col(), cols, src, world)
                     end)
 
         # Csak referencia esetén: distance / yaw / pitch – live update Reffel
@@ -163,7 +163,7 @@ function rebuild_sources_panel!(fig, sources_gl, ncols::Int, cols::Int, world::W
 end
 
 # Egységes GUI setup: bal oldalt keskeny panel, jobb oldalt 3D (2 sor).
-function setup_gui!(fig, scene, world::World, rt::Runtime)
+function setup_gui!(fig, scene, rt::Runtime, world::World)
     fig[1, 1] = gl = GridLayout() # Setting panel
     gl.alignmode = Outside(10) # külső padding
     colsize!(fig.layout, 1, Fixed(CFG["gui"]["GUI_COL_W"]))  # keskeny GUI-oszlop
@@ -173,11 +173,11 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     sources_gl.alignmode = Outside(0) # külső padding
 
     fig[1:2, 2] = scene  # jelenet: helyezés jobbra, két sor magas
-    atlas, ncols, cols = rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]); alphas=Float32.(CFG["gui"]["ALPHA_VALUES"]))
+    atlas, ncols, cols = rr_texture_from_hue(Float32(CFG["gui"]["RR_MAX"]), Float32(CFG["gui"]["RR_STEP"]), Float32.(CFG["gui"]["ALPHA_VALUES"]))
     world.plot = meshscatter!(
         scene,
         world.positions_all;
-        marker       = create_detailed_sphere_fast(Point3f(0, 0, 0), 1f0),
+        marker       = create_detailed_sphere(Point3f(0, 0, 0), 1f0),
         markersize   = world.radii_all,
         color        = atlas,
         uv_transform = world.uv_all,
@@ -187,11 +187,11 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
         shading      = true) 
 
     # --- Vezérlők ---
-    mk_slider!(fig, gl, 1, "E", 0.1:0.1:10.0; startvalue=world.E,
+    mk_slider!(fig, gl, 1, "E", 0.1:0.1:10.0; startvalue = world.E,
                onchange = v -> (world.E = v))
 
     function apply_preset!(sel)
-        rebuild_sources_panel!(fig, sources_gl, ncols, cols, world, rt; preset = sel)
+        rebuild_sources_panel!(sel, ncols, cols, fig, sources_gl, rt, world)
         seek_world_time!(world, recompute = false)
     end
 
@@ -237,8 +237,8 @@ function setup_gui!(fig, scene, world::World, rt::Runtime)
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 5, "▶"; onclick = btn -> begin
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
-            seek_world_time!(world, 0.0)
-            rt.sim_task[] = @async start_sim!(fig, world, rt)
+            seek_world_time!(world; target_t = 0.0)
+            rt.sim_task[] = @async start_sim!(fig, rt, world)
             rt.paused[] = false
         else
             rt.paused[] = !rt.paused[]

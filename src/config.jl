@@ -4,7 +4,7 @@
 
 using TOML
 
-function load_config!(path::AbstractString = joinpath(@__DIR__, "..", "config.toml"))
+function load_config!(; path::AbstractString = joinpath(@__DIR__, "..", "config.toml"))
     cfg = TOML.parsefile(path)
     alpha_values = Float32.(cfg["gui"]["ALPHA_VALUES"])
     fade_profiles = String.(cfg["gui"]["FADE_PROFILE_ORDER"])

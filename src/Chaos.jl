@@ -12,7 +12,7 @@ module Chaos
     const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
 
     # Debug-only assert macro (0 overhead in release)
-    macro dbg_assert(cond, msg="")
+    macro dbg_assert(cond, msg = "")
         return :(@static if DEBUG_MODE
             @assert $(esc(cond)) $(esc(msg))
         end)
@@ -45,7 +45,7 @@ module Chaos
     include("gui.jl")
 
     # ÚJ: gomb-indítású szimuláció külön feladatban  # MOVED: init fent (GUI előtt)
-    function start_sim!(fig, world::World, rt::Runtime)
+    function start_sim!(fig, rt::Runtime, world::World)
         dt = target = 1/60
         while isopen(fig.scene)
             while rt.paused[]; wait(rt.pause_ev); end
@@ -81,7 +81,7 @@ module Chaos
             nothing,
             1)
 
-        apply_preset! = setup_gui!(fig, scene, world, rt)
+        apply_preset! = setup_gui!(fig, scene, rt, world)
         screen = display(fig)  # ablak megjelenítése (screen visszaadva)
         apply_preset!(CFG["presets"]["order"][1])
         zoom!(scene.scene, 15)  # csak display(fig) után működik. #TODO: compute_initial_zoom(world, preset) helper létrehozása, hogy a nagyítás illeszkedjen a szimuláció végállapotához. 
