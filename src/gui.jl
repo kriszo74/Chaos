@@ -36,9 +36,7 @@ function mk_button!(fig, grid, row, label; colspan = 3, onclick = nothing)
     return btn
 end
 
-# Hue kiosztás configból: címkék és index lookup
-const HUE30_LABELS = [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in sort_pairs(CFG["gui"]["hue"])]
-const HUE_NAME_TO_INDEX =  Dict(Symbol(name) => i for (i, (name, _)) in enumerate(sort_pairs(CFG["gui"]["hue"])))
+const HUE30_PAIRS = sort_pairs(CFG["gui"]["hue"])
 const FADE_RATIO_BREAKS_BY_PROFILE = Dict(name => Float64.(CFG["gui"]["FADE_RATIO_BREAKS"][name]) for name in CFG["gui"]["FADE_PROFILE_ORDER"])
 const ALPHA_MIN_START_IX = maximum(length(v) for v in values(FADE_RATIO_BREAKS_BY_PROFILE))
 const ALPHA_VALUES = Float32.(CFG["gui"]["ALPHA_VALUES"])
@@ -61,14 +59,14 @@ preset_specs(preset::String) =
 function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sources_gl, rt::Runtime, world::World)
     rt.paused[] = true            # rebuild közben álljunk meg
     foreach(delete!, contents(sources_gl))  # forráspanel elemeinek törlése
-    trim!(sources_gl)        # üres sor/oszlop levágása
+    trim!(sources_gl)             # üres sor/oszlop levágása
     clear_sources_buffers!(world) # world pufferek resetelése
     empty!(world.sources)         # forráslista ürítése
 
     # Egységes forrás-felépítés + azonnali UI építés (1 ciklus)
     row = 0
     for (i, spec) in enumerate(preset_specs(preset))
-        cur_h_ix = Ref(HUE_NAME_TO_INDEX[spec.color])  # hue-blokk indexe (1..12)
+        cur_h_ix = Ref(findfirst(==(string(spec.color)), first.(HUE30_PAIRS)))  # hue-blokk indexe (1..12)
         cur_rr_offset = Ref(1 + round(Int, spec.RR / CFG["gui"]["RR_STEP"]))    # RR oszlop offset (1..ncols)
         cur_alpha_ix = Ref(max(findfirst(==(spec.alpha), ALPHA_VALUES), ALPHA_MIN_START_IX))
         cur_fade_ix = Ref(findfirst(==(spec.fade_profile), CFG["gui"]["FADE_PROFILE_ORDER"]))
@@ -76,11 +74,11 @@ function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sour
         src = add_source!(sel_col(), cols, spec, world)
 
         # hue row (DISCRETE 0..330° step 30°)
-        mk_menu!(fig, sources_gl, row += 1, "hue $(i)", HUE30_LABELS;
+        hue = mk_menu!(fig, sources_gl, row += 1, "hue $(i)", [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in HUE30_PAIRS];
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
-                        cur_h_ix[] = ix = findfirst(==(sel), HUE30_LABELS)
-                        apply_source_uv!(sel_col(), cols, src, world)
+                        cur_h_ix[] = findfirst(==(sel), hue.options[])
+                        apply_source_visuals!(sel_col(), cols, src, world; source_ix = i, marker_color = RGBf(parse(Colorant, first(HUE30_PAIRS[cur_h_ix[]]))))
                     end)
 
         # alpha row (ALWAYS)
@@ -88,7 +86,7 @@ function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sour
                    startvalue = ALPHA_VALUES[cur_alpha_ix[]],
                    onchange = v -> begin
                        cur_alpha_ix[] = max(findfirst(==(v), ALPHA_VALUES), ALPHA_MIN_START_IX)
-                       apply_source_uv!(sel_col(), cols, src, world)
+                       apply_source_visuals!(sel_col(), cols, src, world)
                    end)
 
         # alpha halványulási profil (DISCRETE)
@@ -96,7 +94,7 @@ function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sour
                     selected_index = cur_fade_ix[],
                     onchange = sel -> begin
                         cur_fade_ix[] = findfirst(==(sel), CFG["gui"]["FADE_PROFILE_ORDER"])
-                        apply_source_uv!(sel_col(), cols, src, world; fade_breaks = FADE_RATIO_BREAKS_BY_PROFILE[CFG["gui"]["FADE_PROFILE_ORDER"][cur_fade_ix[]]])
+                        apply_source_visuals!(sel_col(), cols, src, world; fade_breaks = FADE_RATIO_BREAKS_BY_PROFILE[CFG["gui"]["FADE_PROFILE_ORDER"][cur_fade_ix[]]])
                     end)
 
         # RV (skálár) – LIVE recompute
@@ -157,6 +155,8 @@ function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sour
                        end)
         end
     end
+    sync_source_markers!(world) # Markerpozíciók egyszeri rebuild utáni frissítése.
+    notify(world.source_colors) # Markerszínek egyszeri rebuild utáni frissítése.
     colsize!(sources_gl, 1, Relative(0.4))
     colsize!(sources_gl, 2, Relative(0.45))
     colsize!(sources_gl, 3, Relative(0.15))
@@ -185,6 +185,14 @@ function setup_gui!(fig, scene, rt::Runtime, world::World)
         transparency = true,
         interpolate  = true,
         shading      = true) 
+    world.source_plot = meshscatter!(
+        scene,
+        world.source_positions;
+        marker       = create_detailed_sphere(Point3f(0, 0, 0), 1f0; res = 24),
+        markersize   = 0.08,
+        color        = world.source_colors,
+        transparency = false,
+        shading      = true)
 
     # --- Vezérlők ---
     mk_slider!(fig, gl, 1, "E", 0.1:0.1:10.0; startvalue = world.E,

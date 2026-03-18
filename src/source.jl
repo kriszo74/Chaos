@@ -21,6 +21,7 @@ end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
 function add_source!(sel_col::Int, cols::Int, spec, world)
+    push!(world.source_colors[], RGBf(parse(Colorant, string(spec.color))))
     uv_alpha_bank = compute_source_uvs(spec.fade_ratio_edges, sel_col, cols)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
@@ -61,6 +62,11 @@ function build_source!(src, world)
     append!(world.uv_all[], fill(src.uv_transform, N))       # UV puffer bővítése alap transzformmal
 end
 
+# Forrásmarkerek pozíciópufferének szinkronizálása az aktuális állapottal.
+function sync_source_markers!(world)
+    world.source_positions[] = [Point3d(src.act_p...) for src in world.sources]
+end
+
 # Sugarak frissítése a world.t alapján
 function step_world!(world; step = world.E / 60)
     update_radii!(world)  # sugárpuffer frissítése
@@ -70,6 +76,7 @@ function step_world!(world; step = world.E / 60)
         world.positions_all[first(src.range) + src.act_k] = Point3d(src.act_p...)
     end
     world.plot[:positions][] = world.positions_all
+    sync_source_markers!(world)
 end
 
 # t-re seek: ujraszimulalas 0-tol, step_world! ujrahasznositva
@@ -93,6 +100,7 @@ function seek_world_time!(world; target_t::Float64 = world.t[], step = world.E /
         step_world!(world; step)    # világállapot léptetése és kirajzolása
     end
     world.t[] = target_t
+    sync_source_markers!(world)
 end
 
 # Pufferhosszak frissítése density/max_t változásnál
@@ -109,6 +117,8 @@ function clear_sources_buffers!(world)
     empty!(world.positions_all)     # pozíciópuffer ürítése
     world.radii_all[] = Float64[]   # sugárpuffer ürítése
     world.uv_all[] = SMatrix{3, 3, Float32}[]  # UV puffer ürítése
+    world.source_positions[] = Point3d[]       # marker pozíciók ürítése
+    world.source_colors[] = RGBf[]             # marker színek ürítése
     world.next_start_ix = 1         # indexszámláló visszaállítása
 end
 
@@ -257,10 +267,14 @@ function compute_source_uvs(fade_ratio_edges, sel_col::Int, cols::Int)
 end
 
 # UV‑transzformok és fade lookup újraépítése a forráson
-function apply_source_uv!(sel_col::Int, cols::Int, src::Source, world; fade_breaks = nothing)
+function apply_source_visuals!(sel_col::Int, cols::Int, src::Source, world; fade_breaks = nothing, source_ix = nothing, marker_color = nothing)
     if !isnothing(fade_breaks) 
         src.fade_ratio_edges = fade_breaks
         rebuild_source_fade_breaks!(src, world)
+    end
+    if !isnothing(source_ix) && !isnothing(marker_color)
+        world.source_colors[][source_ix] = marker_color
+        notify(world.source_colors)
     end
     src.uv_alpha_bank = compute_source_uvs(src.fade_ratio_edges, sel_col, cols) # fade szintek UV bankja
     update_radii!(world)

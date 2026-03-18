@@ -6,7 +6,7 @@ module Chaos
     using GeometryBasics
     using Colors
     using Observables  # Observable támogatás
-    #using Infiltrator
+    using Infiltrator
     
     # rendszer-paraméterek
     const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
@@ -35,7 +35,10 @@ module Chaos
         positions_all::Vector{Point3d}
         radii_all::Observable{Vector{Float64}}
         uv_all::Observable{Vector{SMatrix{3, 3, Float32}}}
+        source_positions::Observable{Vector{Point3d}}
+        source_colors::Observable{Vector{RGBf}}
         plot::Any
+        source_plot::Any
 
         # futás-optimalizációs változók:
         next_start_ix::Int           # következő közös puffer kezdő indexe
@@ -78,6 +81,9 @@ module Chaos
             Point3d[],
             Observable(Float64[]),
             Observable(SMatrix{3, 3, Float32}[]),
+            Observable(Point3d[]),
+            Observable(RGBf[]),
+            nothing,
             nothing,
             1)
 
