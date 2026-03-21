@@ -245,7 +245,7 @@ function setup_gui!(fig, scene, rt::Runtime, world::World)
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 5, "▶"; onclick = btn -> begin
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
-            seek_world_time!(world; target_t = 0.0)
+            world.t[] + eps_tol >= world.max_t && seek_world_time!(world; target_t = 0.0)
             rt.sim_task[] = @async start_sim!(fig, rt, world)
             rt.paused[] = false
         else

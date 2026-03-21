@@ -6,10 +6,10 @@ module Chaos
     using GeometryBasics
     using Colors
     using Observables  # Observable támogatás
-    using Infiltrator
+    #using Infiltrator
     
     # rendszer-paraméterek
-    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "1" # set APP_DEBUG=1 -> debug
+    const DEBUG_MODE = get(ENV, "APP_DEBUG", "0") == "1" || get(ENV, "INFILTRATE_ON", "1") == "0" # set APP_DEBUG=1 -> debug
 
     # Debug-only assert macro (0 overhead in release)
     macro dbg_assert(cond, msg = "")

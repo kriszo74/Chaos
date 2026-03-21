@@ -133,7 +133,7 @@ weakdeps = ["SparseArrays"]
 deps = ["Colors", "GLMakie", "GeometryBasics", "LinearAlgebra", "Makie", "Observables", "PackageCompiler", "StaticArrays", "TOML"]
 path = "."
 uuid = "8859d52e-ee75-462b-8ecf-a2894762f1b8"
-version = "0.1.0"
+version = "0.1.2"
 
 [[deps.ColorBrewer]]
 deps = ["Colors", "JSON"]

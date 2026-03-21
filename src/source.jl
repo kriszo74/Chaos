@@ -105,7 +105,7 @@ end
 
 # Pufferhosszak frissítése density/max_t változásnál
 function update_sampling!(world)
-    clear_sources_buffers!(world)   # pufferek újraépítés előtti nullázása
+    clear_sources_buffers!(world; clear_source_colors = false)   # pufferek újraépítés előtti nullázása
     for src in world.sources
         build_source!(src, world)       # új mintavételezésű puffer-szelet építése
     end
@@ -113,12 +113,12 @@ function update_sampling!(world)
 end
 
 # közös forráspufferek alapállapotba visszaállítása
-function clear_sources_buffers!(world)
+function clear_sources_buffers!(world; clear_source_colors::Bool = true)
     empty!(world.positions_all)     # pozíciópuffer ürítése
     world.radii_all[] = Float64[]   # sugárpuffer ürítése
     world.uv_all[] = SMatrix{3, 3, Float32}[]  # UV puffer ürítése
     world.source_positions[] = Point3d[]       # marker pozíciók ürítése
-    world.source_colors[] = RGBf[]             # marker színek ürítése
+    clear_source_colors && (world.source_colors[] = RGBf[]) # marker színek ürítése
     world.next_start_ix = 1         # indexszámláló visszaállítása
 end
 

@@ -60,10 +60,13 @@ H) LAN - Láncolt értékadás: használd rövid, mellékhatás‑mentes inicial
 
 3 RELEASE SZABÁLYOK
 
-- Verzioszabaly: kezdes 0.1.0-alpha.1, majd 0.1.0-alpha.2, stabilnal 0.1.0
+- Verzioszabaly: kezdes 0.1.0-alpha.1, majd 0.1.0-alpha.2, stabilnal 0.1.0; verziót emelni kell Manifest.toml-ban és Project.toml-ban
 - Tag formatum: vX.Y.Z elotag, pl. v0.1.0-alpha.1
 - Release tipus: alpha eseten Pre-release jeloles
 - Minimum release note: 3 rovid blokk: "Uj", "Valtozas", "Ismert hibak"
 - Assetek: csak futtathato/zip, forras automatikus GitHub-on
 - Minimal ellenorzes: futtathato elindul-e + alap UI megnyithato
+- Release elott: Infiltrator csomagot el kell tavolitani
+- Release elott: a using Infiltrator sort ki kell kommentezni
+- Release elott: a debug modot ki kell kapcsolni
 
