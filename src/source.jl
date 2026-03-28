@@ -6,6 +6,8 @@
 mutable struct Source
     act_p::SVector{3, Float64}   # aktuális pozíció
     act_k::Int                   # aktuális index
+    selected_ix::Union{Nothing, Int} # kijelölt lokális gömbindex
+    h_ix::Int                    # aktuális hue index
     RV_u::SVector{3, Float64}    # aktuális RV irányegységvektor
     base_RV_u::SVector{3, Float64} # alap RV irányegységvektor (seek resethez)
     RV_mag::Float64              # RV abszolútérték
@@ -15,17 +17,21 @@ mutable struct Source
     range::UnitRange{Int}        # közös puffer index-tartomány
     uv_transform::SMatrix{3, 3, Float32}          # UV transzform
     uv_alpha_bank::Vector{SMatrix{3, 3, Float32}} # UV bank a fade szintekhez
+    uv_alpha_bank_sel::Vector{SMatrix{3, 3, Float32}} # kijelölt UV bank a fade szintekhez
     fade_ratio_edges::Vector{Float64}             # fade arány-határok
     fade_radius_breaks::Vector{Float64}           # konkrét sugár-határok
 end
 
 # forrás hozzáadása és vizuális regisztráció (közvetlen meshscatter! UV-s markerrel és RR textúrával)
-function add_source!(sel_col::Int, cols::Int, spec, world)
+function add_source!(sel_col::Int, cols::Int, h_ix::Int, spec, world)
     push!(world.source_colors[], RGBf(parse(Colorant, string(spec.color))))
     uv_alpha_bank = compute_source_uvs(spec.fade_ratio_edges, sel_col, cols)
+    uv_alpha_bank_sel = compute_source_uvs(spec.fade_ratio_edges, mod1(sel_col + cols ÷ 2, cols), cols)
     src = Source(
         SVector(0.0, 0.0, 0.0),                 # aktuális pozíció
         0,                                      # aktuális index
+        nothing,                                # kijelölt lokális gömbindex
+        h_ix,                                   # aktuális hue index
         SVector(1.0, 0.0, 0.0),                 # kezdő RV egységvektor
         SVector(1.0, 0.0, 0.0),                 # alap RV egységvektor
         spec.RV,                                # RV abszolútérték
@@ -35,6 +41,7 @@ function add_source!(sel_col::Int, cols::Int, spec, world)
         1:0,                                    # közös puffer szelet (üres)
         uv_alpha_bank[1],                       # UV‑atlasz oszlop kiválasztása
         uv_alpha_bank,                          # UV alpha bank
+        uv_alpha_bank_sel,                      # kijelölt UV alpha bank
         Float64.(spec.fade_ratio_edges),        # fade arány-határok
         Float64[])                              # konkrét sugár-határok
 
@@ -114,12 +121,26 @@ end
 
 # közös forráspufferek alapállapotba visszaállítása
 function clear_sources_buffers!(world; clear_source_colors::Bool = true)
+    clear_source_selection!(world)   # puffer-újraépítéskor a kijelölés megszűnik
     empty!(world.positions_all)     # pozíciópuffer ürítése
     world.radii_all[] = Float64[]   # sugárpuffer ürítése
     world.uv_all[] = SMatrix{3, 3, Float32}[]  # UV puffer ürítése
     world.source_positions[] = Point3d[]       # marker pozíciók ürítése
     clear_source_colors && (world.source_colors[] = RGBf[]) # marker színek ürítése
     world.next_start_ix = 1         # indexszámláló visszaállítása
+end
+
+# Kijelölt gömb törlése és opcionális UV-helyreállítása.
+function clear_source_selection!(world; refresh::Bool = false)
+    isnothing(world.selected_source_ix) && return
+    if !isnothing(world.selected_source_base_color) # szín forrás marker színkijelölés törlése
+        world.source_colors[][world.selected_source_ix] = world.selected_source_base_color # eredeti szín helyreállítása
+        world.selected_source_base_color = nothing
+        notify(world.source_colors)
+    end
+    world.sources[world.selected_source_ix].selected_ix = nothing
+    world.selected_source_ix = nothing
+    refresh && update_radii!(world)
 end
 
 # Emanáció implementálása: sugárvektor frissítése adott t-nél; meglévő pufferbe ír, aktív [1:K], a többi 0.
@@ -137,7 +158,7 @@ function update_radii!(world)
         for i in 1:K                                    # aktív sugarak és UV-k frissítése
             radii[i] = r = dt_rel - (i - 1) / world.density # i. sugár növelése
             while r < breaks[fade_ix]; fade_ix -= 1; end# fade index visszaléptetése
-            uvs[i] = bank[fade_ix]                      # UV kiválasztása index alapján
+            uvs[i] = i == src.selected_ix ? src.uv_alpha_bank_sel[fade_ix] : bank[fade_ix] # UV kiválasztása index alapján
         end                                                              
     end                                                                  
     notify(world.radii_all)                             # sugárpuffer frissítés jelzése
@@ -266,17 +287,31 @@ function compute_source_uvs(fade_ratio_edges, sel_col::Int, cols::Int)
     return [Makie.uv_transform((Vec2f(0f0, (sel_col - i) / cols + sx / 2), Vec2f(1f0, 0f0))) for i in eachindex(fade_ratio_edges)]
 end
 
+# Marker alapszín számítása hue indexből.
+source_marker_color(h_ix::Int) = RGBf(parse(Colorant, first(HUE30_PAIRS[h_ix])))
+
+# Marker kijelölt színe: 180°-kal eltolt hue.
+selected_source_marker_color(h_ix::Int) =
+    source_marker_color(mod1(h_ix + length(HUE30_PAIRS) ÷ 2, length(HUE30_PAIRS)))
+
 # UV‑transzformok és fade lookup újraépítése a forráson
-function apply_source_visuals!(sel_col::Int, cols::Int, src::Source, world; fade_breaks = nothing, source_ix = nothing, marker_color = nothing)
+function apply_source_visuals!(sel_col::Int, cols::Int, src::Source, world; fade_breaks = nothing, source_ix = nothing, h_ix = nothing)
     if !isnothing(fade_breaks) 
         src.fade_ratio_edges = fade_breaks
         rebuild_source_fade_breaks!(src, world)
     end
-    if !isnothing(source_ix) && !isnothing(marker_color)
+    if !isnothing(h_ix)
+        src.h_ix = h_ix
+        marker_color = source_marker_color(src.h_ix)
         world.source_colors[][source_ix] = marker_color
+        if source_ix == world.selected_source_ix && !isnothing(world.selected_source_base_color)
+            world.selected_source_base_color = marker_color
+            world.source_colors[][source_ix] = selected_source_marker_color(src.h_ix)
+        end
         notify(world.source_colors)
     end
     src.uv_alpha_bank = compute_source_uvs(src.fade_ratio_edges, sel_col, cols) # fade szintek UV bankja
+    src.uv_alpha_bank_sel = compute_source_uvs(src.fade_ratio_edges, mod1(sel_col + cols ÷ 2, cols), cols) # kijelölt fade UV bank
     update_radii!(world)
 end
 
@@ -284,5 +319,6 @@ end
 function apply_source_RR!(new_RR::Float64, sel_col::Int, cols::Int, src::Source, world)
     src.RR = new_RR                              # RR skálár frissítése
     src.uv_alpha_bank = compute_source_uvs(src.fade_ratio_edges, sel_col, cols)  # textúra oszlop frissítése
+    src.uv_alpha_bank_sel = compute_source_uvs(src.fade_ratio_edges, mod1(sel_col + cols ÷ 2, cols), cols)  # kijelölt textúra oszlop
     seek_world_time!(world)
 end

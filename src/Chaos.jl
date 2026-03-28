@@ -31,6 +31,8 @@ module Chaos
         density::Float64
         max_t::Float64
         t::Observable{Float64}
+        selected_source_ix::Union{Nothing,Int}
+        selected_source_base_color::Union{Nothing,RGBf}
         sources::Vector{Source}
         positions_all::Vector{Point3d}
         radii_all::Observable{Vector{Float64}}
@@ -77,6 +79,8 @@ module Chaos
             Float64(CFG["world"]["density"]),
             Float64(CFG["world"]["max_t"]),
             Observable(0.0),
+            nothing,
+            nothing,
             Source[],
             Point3d[],
             Observable(Float64[]),

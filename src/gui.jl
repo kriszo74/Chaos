@@ -71,14 +71,14 @@ function rebuild_sources_panel!(preset::String, ncols::Int, cols::Int, fig, sour
         cur_alpha_ix = Ref(max(findfirst(==(spec.alpha), ALPHA_VALUES), ALPHA_MIN_START_IX))
         cur_fade_ix = Ref(findfirst(==(spec.fade_profile), CFG["gui"]["FADE_PROFILE_ORDER"]))
         sel_col() = (cur_h_ix[] - 1) * ncols + (cur_rr_offset[] - 1) * length(CFG["gui"]["ALPHA_VALUES"]) + cur_alpha_ix[]
-        src = add_source!(sel_col(), cols, spec, world)
+        src = add_source!(sel_col(), cols, cur_h_ix[], spec, world)
 
         # hue row (DISCRETE 0..330° step 30°)
         hue = mk_menu!(fig, sources_gl, row += 1, "hue $(i)", [string(Symbol(name), " (", deg, Char(176), ")") for (name, deg) in HUE30_PAIRS];
                     selected_index = cur_h_ix[],
                     onchange = sel -> begin
                         cur_h_ix[] = findfirst(==(sel), hue.options[])
-                        apply_source_visuals!(sel_col(), cols, src, world; source_ix = i, marker_color = RGBf(parse(Colorant, first(HUE30_PAIRS[cur_h_ix[]]))))
+                        apply_source_visuals!(sel_col(), cols, src, world; source_ix = i, h_ix = cur_h_ix[])
                     end)
 
         # alpha row (ALWAYS)
@@ -194,6 +194,32 @@ function setup_gui!(fig, scene, rt::Runtime, world::World)
         transparency = false,
         shading      = true)
 
+    # Bal klikkre kiválasztjuk a meshscatter-ben eltalált forrást és gömb-indexet.
+    on(events(scene.scene).mousebutton, priority = 120) do ev
+        if ev.button == Mouse.left && ev.action == Mouse.press
+            p, idx = pick(scene.scene, events(scene.scene).mouseposition[])
+            if idx == 0
+                clear_source_selection!(world; refresh = true)
+            elseif p === world.plot
+                clear_source_selection!(world)
+                for (src_ix, src) in pairs(world.sources)
+                    idx in src.range || continue
+                    world.selected_source_ix = src_ix
+                    src.selected_ix = idx - first(src.range) + 1
+                    update_radii!(world)
+                    break
+                end
+            elseif p === world.source_plot
+                clear_source_selection!(world; refresh = true)
+                world.selected_source_ix = idx
+                world.selected_source_base_color = world.source_colors[][idx]
+                world.source_colors[][idx] = selected_source_marker_color(world.sources[idx].h_ix)
+                notify(world.source_colors)
+            end
+        end
+        return Consume(false)
+    end
+
     # --- Vezérlők ---
     mk_slider!(fig, gl, 1, "E", 0.1:0.1:10.0; startvalue = world.E,
                onchange = v -> (world.E = v))
@@ -222,6 +248,7 @@ function setup_gui!(fig, scene, rt::Runtime, world::World)
                     onchange = v -> begin
                         disable_sT_onchange[] && return # ha programból toljuk a csúszkát (play alatt), NE állítsunk pauzét
                         rt.paused[] = true
+                        clear_source_selection!(world)
                         world.t[] = v
                         seek_world_time!(world; recompute = false)
                     end)
@@ -244,6 +271,7 @@ function setup_gui!(fig, scene, rt::Runtime, world::World)
 
     # Gomb: Play/Pause egyetlen gombbal (címkeváltás)
     btnPlay = mk_button!(fig, gl, 5, "▶"; onclick = btn -> begin
+        clear_source_selection!(world)
         if isnothing(rt.sim_task[]) || istaskdone(rt.sim_task[])
             world.t[] + eps_tol >= world.max_t && seek_world_time!(world; target_t = 0.0)
             rt.sim_task[] = @async start_sim!(fig, rt, world)
